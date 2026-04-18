@@ -9,7 +9,7 @@ type EmailPayload = {
   text: string;
 };
 
-export function sendEmail(payload: EmailPayload): void {
+export async function sendEmail(payload: EmailPayload): Promise<void> {
   const apiKey = process.env.AGENTMAIL_API_KEY;
   const inboxId = process.env.AGENTMAIL_INBOX_ID;
 
@@ -23,25 +23,26 @@ export function sendEmail(payload: EmailPayload): void {
   }
 
   const url = `https://api.agentmail.to/v0/inboxes/${encodeURIComponent(inboxId)}/messages/send`;
-  fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      to: payload.to,
-      subject: payload.subject,
-      text: payload.text,
-    }),
-  })
-    .then(async (res) => {
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        console.error(`[email] agentmail ${res.status}:`, body.slice(0, 500));
-      }
-    })
-    .catch((err) => {
-      console.error("[email] agentmail failed:", err);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        to: payload.to,
+        subject: payload.subject,
+        text: payload.text,
+      }),
     });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`[email] agentmail ${res.status}:`, body.slice(0, 500));
+    } else {
+      console.log(`[email] sent to ${payload.to} via ${inboxId}`);
+    }
+  } catch (err) {
+    console.error("[email] agentmail failed:", err);
+  }
 }

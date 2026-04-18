@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
   const link = `${baseUrl}/api/auth/verify?token=${encodeURIComponent(token)}`;
 
-  sendEmail({
+  await sendEmail({
     to: email,
     subject: "Your Irrigation Audit sign-in link",
     text: `Click the link below to sign in. It expires in ${magicLinkTtlMinutes()} minutes.\n\n${link}\n\nIf you didn't request this, ignore this email.`,
