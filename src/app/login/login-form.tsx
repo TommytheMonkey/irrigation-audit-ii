@@ -29,7 +29,8 @@ export function LoginForm({
         body: JSON.stringify({ email: email.trim() }),
       });
       if (!res.ok) {
-        toast.error("Couldn't send the link — check the email and try again.");
+        const data = (await res.json().catch(() => ({}))) as { message?: string };
+        toast.error(data.message ?? "Couldn't send the link — check the email and try again.");
         return;
       }
       setSentTo(email.trim());
