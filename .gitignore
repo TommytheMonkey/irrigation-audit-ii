@@ -33,6 +33,15 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# secret creds (Google service accounts, etc.)
+/creds/
+
+# dev-only photo uploads — prod uses Vercel Blob
+/public/uploads/
+
+# Tyler's archival reference material — ground truth is in REFERENCE_NOTES.md
+/reference/
+
 # vercel
 .vercel
 

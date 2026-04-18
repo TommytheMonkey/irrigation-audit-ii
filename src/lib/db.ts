@@ -1,0 +1,26 @@
+import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+
+// Singleton pattern: reuse the Prisma client across hot-reloads in dev so we
+// don't exhaust the Neon connection pool. In prod (Vercel) each lambda gets
+// its own instance.
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+};
+
+function createClient() {
+  const adapter = new PrismaPg({
+    connectionString: process.env.DATABASE_URL,
+  });
+  return new PrismaClient({
+    adapter,
+    log:
+      process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+  });
+}
+
+export const db = globalForPrisma.prisma ?? createClient();
+
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = db;
+}

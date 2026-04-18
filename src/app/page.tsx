@@ -1,65 +1,153 @@
-import Image from "next/image";
+import Link from "next/link";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { AppHeader } from "@/components/app-header";
+import { db } from "@/lib/db";
+import { requireAuth } from "@/lib/auth";
+import { formatRelative } from "@/lib/format";
+import { PropertyList } from "./property-list";
 
-export default function Home() {
+// Server component — runs on every request, queries Neon directly via the
+// pg adapter. Mobile-first dashboard: property cards, tap to drill in.
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const user = await requireAuth();
+
+  // Pull properties + the org's Monday sync state in parallel. We exclude
+  // properties whose Monday item was removed since the last sync (still in
+  // the table for audit-history continuity, but shouldn't clutter the grid).
+  const [properties, org] = await Promise.all([
+    db.property.findMany({
+      where: { orgId: user.orgId, syncStatus: { not: "removed" } },
+      orderBy: { createdAt: "desc" },
+      include: {
+        audits: {
+          orderBy: { startedAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            startedAt: true,
+            completedAt: true,
+          },
+        },
+        _count: { select: { audits: true } },
+      },
+    }),
+    db.org.findUniqueOrThrow({
+      where: { id: user.orgId },
+      select: { mondayBoardId: true, propertiesSyncedAt: true },
+    }),
+  ]);
+
+  const mondayConfigured = org.mondayBoardId !== null;
+  // 7-day staleness threshold — beyond that we nudge the user to re-sync.
+  const STALE_MS = 7 * 24 * 60 * 60 * 1000;
+  const isStale =
+    mondayConfigured &&
+    (org.propertiesSyncedAt === null ||
+      Date.now() - org.propertiesSyncedAt.getTime() > STALE_MS);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <>
+      <AppHeader />
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-10">
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+              Properties
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {properties.length}{" "}
+              {properties.length === 1 ? "property" : "properties"}
+            </p>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+
+        {mondayConfigured && (
+          <SyncBanner
+            syncedAt={org.propertiesSyncedAt}
+            isStale={isStale}
+            canSync={user.role === "admin"}
+          />
+        )}
+
+        {properties.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <PropertyList properties={properties} />
+        )}
       </main>
+    </>
+  );
+}
+
+function EmptyState() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>No properties yet</CardTitle>
+        <CardDescription>
+          Connect Monday.com from{" "}
+          <Link href="/settings?tab=integrations" className="underline">
+            Settings → Integrations
+          </Link>{" "}
+          to sync your board, or run{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            npm run db:seed:demo
+          </code>{" "}
+          to load demo properties.
+        </CardDescription>
+      </CardHeader>
+    </Card>
+  );
+}
+
+// Banner above the property grid that shows last-sync state. Stale (>7d) or
+// never-synced gets an amber tint to nudge the user; healthy is plain.
+function SyncBanner({
+  syncedAt,
+  isStale,
+  canSync,
+}: {
+  syncedAt: Date | null;
+  isStale: boolean;
+  canSync: boolean;
+}) {
+  const tone = isStale
+    ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
+    : "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-300";
+  return (
+    <div
+      className={`mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-2.5 text-sm ${tone}`}
+    >
+      <div>
+        {syncedAt ? (
+          <>
+            <span className="font-medium">Monday sync:</span>{" "}
+            {isStale ? "stale — " : ""}last synced {formatRelative(syncedAt)}
+          </>
+        ) : (
+          <>
+            <span className="font-medium">Monday connected</span> but no sync
+            has run yet.
+          </>
+        )}
+      </div>
+      {canSync && (
+        <Link
+          href="/settings?tab=integrations"
+          className="text-xs font-medium underline"
+        >
+          Sync now
+        </Link>
+      )}
     </div>
   );
 }
+

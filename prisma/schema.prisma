@@ -1,0 +1,437 @@
+// Irrigation Audit — Prisma schema
+// Source of truth for the data model. See REFERENCE_NOTES.md for the
+// reasoning behind every enum and table. Changes here must stay consistent
+// with that doc.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = []
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  admin
+  auditor
+  estimator
+}
+
+enum AuditStatus {
+  in_progress
+  completed
+  exported
+  priced
+  report_generated
+}
+
+enum ZoneType {
+  spray
+  drip
+  bubbler
+  rotor
+  other
+}
+
+enum ZoneSize {
+  size_0_75in @map("0.75in")
+  size_1in    @map("1in")
+  size_1_5in  @map("1.5in")
+  size_2in    @map("2in")
+  other
+}
+
+enum WiringType {
+  conventional
+  two_wire
+}
+
+enum IssueType {
+  maladjusted
+  missing
+  damaged_broken
+  incorrect_placement
+  leak
+  clog
+  electrical_issue
+}
+
+enum SolutionAction {
+  adjust
+  replace
+  repair
+  relocate
+  troubleshoot
+  other
+}
+
+enum CostModel {
+  time_only
+  time_materials
+}
+
+enum UnitOfMeasure {
+  ea
+  sf
+  none
+}
+
+// Default severity per IssueType is seeded — see REFERENCE_NOTES.md §3.
+// Auditor can override per finding.
+enum Severity {
+  low
+  medium
+  high
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tenancy
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Org {
+  id                   String   @id @default(cuid())
+  name                 String
+  emailDomain          String?  @unique @map("email_domain")
+  // Integration credentials — encrypted at rest at the application layer
+  // before being written here. Never store plaintext.
+  mondayApiKeyEnc      String?  @map("monday_api_key_enc")
+  mondayBoardId        String?  @map("monday_board_id")
+  // JSON map of property field → Monday column id, e.g.
+  // {"address": "text0", "pmName": "text3", "pmEmail": "email4"}
+  // Set during the onboarding wizard's Monday step (or in settings) so the
+  // sync job knows which Monday column maps to which property field.
+  mondayColumnMapping  Json?    @map("monday_column_mapping")
+  propertiesSyncedAt   DateTime? @map("properties_synced_at")
+  googleCredentialsEnc String?  @map("google_credentials_enc")
+  googleDriveFolderId  String?  @map("google_drive_folder_id")
+  // Config sheet — Google Sheet that holds the org's reference data
+  // (component types, quick-picks, severity levels). The literal value
+  // "mock" means dev-mode JSON storage; otherwise it's a real Sheets ID.
+  configSheetId        String?  @map("config_sheet_id")
+  configSyncedAt       DateTime? @map("config_synced_at")
+  // Google OAuth (encrypted refresh token + the connected account email
+  // shown in settings so users can see which Google account is wired up)
+  googleConnectedEmail String?  @map("google_connected_email")
+  // Branding
+  primaryLogoUrl       String?  @map("primary_logo_url")
+  secondaryLogoUrl     String?  @map("secondary_logo_url")
+  brandColorPrimary    String?  @map("brand_color_primary")
+  brandColorSecondary  String?  @map("brand_color_secondary")
+  fontFamily           String?  @map("font_family")
+  // First-run gate: orgs created via signup start with this false and the
+  // user gets routed to /onboarding until they finish (or skip-all) the
+  // wizard. Existing demo org is flipped to true by the demo seed.
+  onboardingComplete   Boolean  @default(false) @map("onboarding_complete")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  users                User[]
+  properties           Property[]
+  audits               Audit[]
+  componentTypes       ComponentType[]
+  quickPickFindings    QuickPickFinding[]
+  severityLevels       SeverityLevel[]
+
+  @@map("orgs")
+}
+
+model User {
+  id          String    @id @default(cuid())
+  orgId       String    @map("org_id")
+  email       String    @unique
+  name        String?
+  role        UserRole  @default(auditor)
+  lastLoginAt DateTime? @map("last_login_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  org         Org       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  audits      Audit[]   @relation("AuditAuditor")
+
+  @@index([orgId])
+  @@map("users")
+}
+
+// Single-use magic-link tokens. We could rely solely on JWT expiry, but a
+// table lets us revoke unused tokens, enforce single-use via `usedAt`, and
+// audit auth attempts. Auto-cleanup of expired rows is a future cron job.
+model MagicToken {
+  id        String    @id @default(cuid())
+  email     String
+  token     String    @unique
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([email])
+  @@map("magic_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Properties
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Property {
+  id                   String    @id @default(cuid())
+  orgId                String    @map("org_id")
+  // Monday.com integration — every property is sourced from Monday for orgs
+  // that have Monday connected. Manual rows leave this null.
+  mondayItemId         String?   @map("monday_item_id")
+  name                 String
+  address              String?
+  city                 String?
+  state                String?
+  zip                  String?
+  propertyManagerName  String?   @map("property_manager_name")
+  propertyManagerEmail String?   @map("property_manager_email")
+  propertyManagerPhone String?   @map("property_manager_phone")
+  syncedFromMondayAt   DateTime? @map("synced_from_monday_at")
+  // "active" while the property is present on the Monday board, "removed"
+  // once it's no longer there. We never hard-delete because audits link to
+  // properties — removed rows stay queryable for history.
+  syncStatus           String    @default("active") @map("sync_status")
+  // Free-form metadata: client status, billing status, contract value,
+  // program tier, crew, etc. (see REFERENCE_NOTES.md §9)
+  metadata             Json?
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  org                  Org       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  audits               Audit[]
+
+  @@unique([orgId, mondayItemId])
+  @@index([orgId])
+  @@map("properties")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Audits — Property → Audit → AuditSystem → AuditZone → AuditFinding
+// The system layer is required because a single property can have multiple
+// irrigation systems with separate controllers / water sources / zones.
+// See REFERENCE_NOTES.md §1.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Audit {
+  id              String       @id @default(cuid())
+  orgId           String       @map("org_id")
+  propertyId      String       @map("property_id")
+  auditorUserId   String       @map("auditor_user_id")
+  status          AuditStatus  @default(in_progress)
+  startedAt       DateTime     @default(now()) @map("started_at")
+  completedAt     DateTime?    @map("completed_at")
+  // Google Sheets handoff to the estimator
+  googleSheetId   String?      @map("google_sheet_id")
+  googleSheetUrl  String?      @map("google_sheet_url")
+  // Last time prices were pulled back from the Sheet — null until the
+  // estimator fills in the Unit Price column and the user runs Sync Prices.
+  priceSyncedAt   DateTime?    @map("price_synced_at")
+  // Final client-facing PDF
+  reportPdfUrl    String?      @map("report_pdf_url")
+  notes           String?
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  org             Org          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  property        Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  auditor         User         @relation("AuditAuditor", fields: [auditorUserId], references: [id])
+  systems         AuditSystem[]
+  zones           AuditZone[]
+  findings        AuditFinding[]
+  scores          AuditScore[]
+
+  @@index([orgId])
+  @@index([propertyId])
+  @@map("audits")
+}
+
+model AuditSystem {
+  id                 String       @id @default(cuid())
+  auditId            String       @map("audit_id")
+  // Stable label within an audit — "1", "2", "Front", "Back", etc.
+  systemNumber       String       @map("system_number")
+  systemName         String?      @map("system_name")
+  controllerBrand    String?      @map("controller_brand")
+  controllerModel    String?      @map("controller_model")
+  controllerLocation String?      @map("controller_location")
+  wiringType         WiringType?  @map("wiring_type")
+  waterSourceType    String?      @map("water_source_type")
+  // System-level inspection fields lifted from the Austin Oaks paper form
+  meterLocation      String?      @map("meter_location")
+  meterNumber        String?      @map("meter_number")
+  meterReading       String?      @map("meter_reading")
+  backflowStatus     String?      @map("backflow_status")
+  rainSensorPresent  Boolean?     @map("rain_sensor_present")
+  remoteWired        String?      @map("remote_wired")
+  controllerStatus   String?      @map("controller_status")
+  powerToUnit        Boolean?     @map("power_to_unit")
+  notes              String?
+  createdAt          DateTime     @default(now()) @map("created_at")
+
+  audit              Audit        @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  zones              AuditZone[]
+  findings           AuditFinding[]
+
+  @@unique([auditId, systemNumber])
+  @@index([auditId])
+  @@map("audit_systems")
+}
+
+model AuditZone {
+  id          String     @id @default(cuid())
+  auditId     String     @map("audit_id")
+  systemId    String     @map("system_id")
+  zoneNumber  Int        @map("zone_number")
+  zoneName    String?    @map("zone_name")
+  zoneType    ZoneType   @default(spray) @map("zone_type")
+  zoneSize    ZoneSize   @default(other) @map("zone_size")
+  notes       String?
+  completedAt DateTime?  @map("completed_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  audit       Audit          @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  system      AuditSystem    @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  findings    AuditFinding[]
+
+  @@unique([systemId, zoneNumber])
+  @@index([auditId])
+  @@index([systemId])
+  @@map("audit_zones")
+}
+
+model AuditFinding {
+  id                String         @id @default(cuid())
+  auditId           String         @map("audit_id")
+  // System-level findings (mainline break, controller dead) leave zoneId
+  // null and attach directly to a system. Zone-level findings set both.
+  systemId          String         @map("system_id")
+  zoneId            String?        @map("zone_id")
+  // Taxonomy
+  issueType         IssueType      @map("issue_type")
+  componentCategory String         @map("component_category")
+  componentSubtype  String?        @map("component_subtype")
+  componentSize     String?        @map("component_size")
+  severity          Severity       @default(medium)
+  // Recommendation
+  solutionAction    SolutionAction @map("solution_action")
+  costModel         CostModel      @default(time_materials) @map("cost_model")
+  quantity          Decimal?       @db.Decimal(10, 2)
+  unitOfMeasure     UnitOfMeasure  @default(ea) @map("unit_of_measure")
+  description       String?
+  recommendation    String?
+  notes             String?
+  // Photos: blob URLs (Vercel Blob in prod, /public/uploads in dev)
+  photoUrls         String[]       @map("photo_urls")
+  // Pricing — filled in by the estimator after Google Sheets handoff
+  unitPrice         Decimal?       @db.Decimal(10, 2) @map("unit_price")
+  extPrice          Decimal?       @db.Decimal(10, 2) @map("ext_price")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  audit             Audit          @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  system            AuditSystem    @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  zone              AuditZone?     @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@index([auditId])
+  @@index([systemId])
+  @@index([zoneId])
+  @@map("audit_findings")
+}
+
+model AuditScore {
+  id        String   @id @default(cuid())
+  auditId   String   @map("audit_id")
+  category  String
+  score     Decimal  @db.Decimal(5, 2)
+  maxScore  Decimal  @db.Decimal(5, 2) @map("max_score")
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  audit     Audit    @relation(fields: [auditId], references: [id], onDelete: Cascade)
+
+  @@index([auditId])
+  @@map("audit_scores")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reference / lookup tables (org_id null = global default seeded for everyone)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ComponentType {
+  id          String   @id @default(cuid())
+  orgId       String?  @map("org_id")
+  category    String
+  name        String
+  // Subtype list, e.g. spray head → ["4\"", "6\"", "12\""]
+  subtypes    Json?
+  sortOrder   Int      @default(0) @map("sort_order")
+  // Soft-delete: rows that vanish from the config sheet on sync get
+  // isActive=false instead of being deleted, so historical findings still
+  // resolve their component category for the report.
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  org         Org?     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, category, name])
+  @@index([orgId])
+  @@map("component_types")
+}
+
+// One row per Austin-Oaks-style quick-pick: pre-mapped (issue, component,
+// solution) so the auditor taps a single button instead of three dropdowns.
+// org_id null = global seed; orgs can add their own.
+model QuickPickFinding {
+  id                String         @id @default(cuid())
+  orgId             String?        @map("org_id")
+  section           String         // "Turf / shrub heads", "Drip / misc", etc.
+  label             String         // "Missing head 4\"", "Cut drip", etc.
+  issueType         IssueType      @map("issue_type")
+  componentCategory String         @map("component_category")
+  componentSubtype  String?        @map("component_subtype")
+  componentSize     String?        @map("component_size")
+  defaultSolution   SolutionAction @map("default_solution")
+  defaultCostModel  CostModel      @default(time_materials) @map("default_cost_model")
+  defaultUom        UnitOfMeasure  @default(ea) @map("default_uom")
+  defaultSeverity   Severity       @default(medium) @map("default_severity")
+  sortOrder         Int            @default(0) @map("sort_order")
+  isActive          Boolean        @default(true) @map("is_active")
+  createdAt         DateTime       @default(now()) @map("created_at")
+
+  org               Org?           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, section])
+  @@map("quick_pick_findings")
+}
+
+// Per-org severity-level customization. Each row is one of the three
+// underlying enum values (low/medium/high) — orgs can rename the display
+// label, change the color, or tweak the description, but they're locked to
+// three buckets to keep the UI sane. Lifting that constraint would require
+// changing AuditFinding.severity from an enum to a FK.
+model SeverityLevel {
+  id          String   @id @default(cuid())
+  orgId       String?  @map("org_id")
+  // Underlying bucket — what AuditFinding.severity stores.
+  severity    Severity
+  // Human-facing name from the config sheet (e.g., "Critical", "Acute", "Red").
+  name        String
+  // Hex color code for chips, badges, severity buttons.
+  color       String
+  // Sort order from the sheet (typically 1, 2, 3 — low → high).
+  sortOrder   Int      @map("sort_order")
+  // Optional richer display string (e.g., "🔴 Critical").
+  label       String?
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  org         Org?     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, severity])
+  @@index([orgId])
+  @@map("severity_levels")
+}
