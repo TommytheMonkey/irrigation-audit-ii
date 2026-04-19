@@ -490,9 +490,12 @@ function Field({
 function ZonesTable({ data, styles }: { data: ReportData; styles: Styles }) {
   if (data.zones.length === 0) return null;
   return (
-    <View wrap={false}>
+    <View>
       <Text style={styles.sectionTitle}>Zones ({data.zones.length})</Text>
-      <View style={styles.tableHeader}>
+      {/* `fixed` on the header inside a wrapping View is @react-pdf's
+          repeating-table-header pattern. It reprints on every continuation
+          page where this table spans, never on unrelated pages. */}
+      <View style={styles.tableHeader} fixed>
         <Text style={[styles.tableCell, { width: 30 }]}>#</Text>
         <Text style={[styles.tableCell, { flex: 2 }]}>Name</Text>
         <Text style={[styles.tableCell, { width: 50 }]}>Type</Text>
@@ -531,7 +534,7 @@ function PartsTable({ data, styles }: { data: ReportData; styles: Styles }) {
   return (
     <View>
       <Text style={styles.sectionTitle}>Parts in use ({data.parts.length})</Text>
-      <View style={styles.tableHeader}>
+      <View style={styles.tableHeader} fixed>
         <Text style={[styles.tableCell, { width: 80 }]}>Category</Text>
         <Text style={[styles.tableCell, { flex: 1.5 }]}>Brand</Text>
         <Text style={[styles.tableCell, { flex: 2 }]}>Model</Text>
