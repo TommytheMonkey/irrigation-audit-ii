@@ -55,6 +55,7 @@ export function IntegrationsTab({
   const [boardId, setBoardId] = useState(initial.mondayBoardId ?? "");
   const [mondayPending, mondayStart] = useTransition();
   const [syncPending, syncStart] = useTransition();
+  const [geocodePending, geocodeStart] = useTransition();
   const [mappingOpen, setMappingOpen] = useState(false);
   const [mappingColumns, setMappingColumns] = useState<MondayColumn[] | null>(null);
   const [mapping, setMapping] = useState<ColumnMapping>(
@@ -91,6 +92,29 @@ export function IntegrationsTab({
       toast.success("Saved.");
       setApiKey("");
       setEditingCreds(false);
+      router.refresh();
+    });
+  }
+
+  function geocodeNow() {
+    geocodeStart(async () => {
+      const res = await fetch("/api/properties/backfill-geocode", {
+        method: "POST",
+      });
+      const data = (await res.json().catch(() => ({}))) as
+        | { ok: true; total: number; geocoded: number; skipped: number }
+        | { error: string; message?: string };
+      if (!res.ok || !("ok" in data)) {
+        toast.error("Geocode failed.");
+        return;
+      }
+      if (data.total === 0) {
+        toast.message("All properties already have coordinates.");
+      } else {
+        toast.success(
+          `Geocoded ${data.geocoded} of ${data.total} properties${data.skipped ? ` (${data.skipped} skipped — bad address)` : ""}.`,
+        );
+      }
       router.refresh();
     });
   }
@@ -262,6 +286,17 @@ export function IntegrationsTab({
                     disabled={syncPending}
                   >
                     {syncPending ? "Syncing…" : "Sync now"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="lg"
+                    className="h-11"
+                    onClick={geocodeNow}
+                    disabled={geocodePending}
+                    title="Geocode any properties missing map coordinates"
+                  >
+                    {geocodePending ? "Geocoding…" : "Geocode now"}
                   </Button>
                   <Button
                     type="button"
