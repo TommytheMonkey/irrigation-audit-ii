@@ -6,6 +6,7 @@
 // sections = new sub-components here + a toggle in ReportSections.
 
 import React from "react";
+import path from "node:path";
 import {
   Document,
   Image,
@@ -16,6 +17,15 @@ import {
   Font,
 } from "@react-pdf/renderer";
 import type { ReportData } from "./report-data";
+
+// Takeo attribution icon for the footer. Lives in public/ so it ships
+// with the deploy; @react-pdf reads it from disk at render time, no HTTP
+// fetch needed.
+const TAKEO_FOOTER_ICON = path.join(
+  process.cwd(),
+  "public",
+  "takeo-footer-icon.jpg",
+);
 
 Font.register({
   family: "Helvetica",
@@ -185,7 +195,9 @@ function buildStyles(colors: BrandColors) {
       justifyContent: "space-between",
       alignItems: "flex-end",
     },
-    footerLeft: { flex: 1 },
+    footerLeft: { flexDirection: "row", alignItems: "center", flex: 1 },
+    footerIcon: { width: 16, height: 16, marginRight: 6 },
+    footerText: { flexDirection: "column" },
     footerOrg: { fontSize: 8, color: "#777" },
     footerPoweredBy: {
       fontSize: 7,
@@ -599,10 +611,13 @@ function Footer({ data, styles }: { data: ReportData; styles: Styles }) {
   return (
     <View style={styles.footer} fixed>
       <View style={styles.footerLeft}>
-        <Text style={styles.footerOrg}>{data.org.name}</Text>
-        <Text style={styles.footerPoweredBy}>
-          Powered by Takeo by Takeoff Monkey
-        </Text>
+        <Image src={TAKEO_FOOTER_ICON} style={styles.footerIcon} />
+        <View style={styles.footerText}>
+          <Text style={styles.footerOrg}>{data.org.name}</Text>
+          <Text style={styles.footerPoweredBy}>
+            Powered by Takeo by Takeoff Monkey
+          </Text>
+        </View>
       </View>
       <Text
         style={styles.footerPage}
