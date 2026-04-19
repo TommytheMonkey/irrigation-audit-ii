@@ -119,6 +119,32 @@ export function magicLinkTtlMinutes(): number {
   return MAGIC_LINK_TTL_MIN;
 }
 
+/**
+ * Mint a magic link for an email: creates the tracking row in `magic_tokens`
+ * and returns the full verification URL. Used by both the login flow and the
+ * invite flow (which sends the link via email directly).
+ */
+export async function createMagicLinkUrl(email: string): Promise<string> {
+  const { randomUUID } = await import("node:crypto");
+  const { db } = await import("./db");
+
+  const normalized = email.trim().toLowerCase();
+  const jti = randomUUID();
+  const ttlMs = MAGIC_LINK_TTL_MIN * 60 * 1000;
+  const token = await signMagicToken(normalized, jti);
+
+  await db.magicToken.create({
+    data: {
+      email: normalized,
+      token: jti,
+      expiresAt: new Date(Date.now() + ttlMs),
+    },
+  });
+
+  const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
+  return `${baseUrl}/api/auth/verify?token=${encodeURIComponent(token)}`;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Caller helpers (server components / route handlers)
 // ─────────────────────────────────────────────────────────────────────────────

@@ -54,14 +54,20 @@ export function UsersTab({
         body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
       });
       const json = (await res.json().catch(() => ({}))) as
-        | UserRow
+        | (UserRow & { emailSent?: boolean })
         | { error: string; message?: string };
       if (!res.ok || "error" in json) {
         const msg = "message" in json ? json.message : "Couldn't invite user.";
         toast.error(msg ?? "Couldn't invite user.");
         return;
       }
-      toast.success(`Invited ${json.email}.`);
+      if (json.emailSent) {
+        toast.success(`Invite sent to ${json.email}.`);
+      } else {
+        toast.warning(
+          `${json.email} added, but invite email didn't send. Share the /login link manually.`,
+        );
+      }
       setInviteEmail("");
       router.refresh();
     });
@@ -107,9 +113,8 @@ export function UsersTab({
           <CardHeader>
             <CardTitle>Invite a teammate</CardTitle>
             <CardDescription>
-              They&apos;ll join the org the first time they sign in with this
-              email. No invitation email yet — just tell them to head to the
-              login page.
+              They&apos;ll get an email with a sign-in link. The link drops
+              them straight into your org with the role you pick.
             </CardDescription>
           </CardHeader>
           <CardContent>

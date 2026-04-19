@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import {
+  createMagicLinkUrl,
+  getCurrentUser,
+  magicLinkTtlMinutes,
+} from "@/lib/auth";
+import { sendEmail } from "@/lib/email";
 import type { UserRole } from "@prisma/client";
 
 // GET /api/settings/users — list every user in the caller's org. Used by
@@ -67,5 +72,29 @@ export async function POST(req: Request) {
     },
     select: { id: true, email: true, name: true, role: true, createdAt: true },
   });
-  return NextResponse.json(created);
+
+  // Fire off a magic-link email so the invitee can click straight in.
+  // Failure is non-fatal — the user row already exists, they can also sign
+  // in via /login with their email.
+  let emailSent = false;
+  try {
+    const link = await createMagicLinkUrl(email);
+    const orgName = (
+      await db.org.findUnique({
+        where: { id: user.orgId },
+        select: { name: true },
+      })
+    )?.name ?? "your team";
+    const inviter = user.name ?? user.email;
+    await sendEmail({
+      to: email,
+      subject: `You're invited to ${orgName} on Irrigation Audit`,
+      text: `${inviter} invited you to ${orgName} on Irrigation Audit.\n\nClick the link below to sign in. It expires in ${magicLinkTtlMinutes()} minutes.\n\n${link}\n\nOnce signed in, bookmark the page — you can always request a new sign-in link from the login screen later.`,
+    });
+    emailSent = true;
+  } catch (e) {
+    console.error("[invite] email send failed:", e);
+  }
+
+  return NextResponse.json({ ...created, emailSent });
 }
