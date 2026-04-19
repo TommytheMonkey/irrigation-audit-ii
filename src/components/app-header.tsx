@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Image from "next/image";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { SignOutButton } from "./sign-out-button";
@@ -9,10 +8,12 @@ export async function AppHeader() {
   if (!user) {
     throw new Error("AppHeader rendered without an authenticated user");
   }
-  const org = await db.org.findUniqueOrThrow({
+  const org = await db.org.findUnique({
     where: { id: user.orgId },
-    select: { primaryLogoUrl: true, brandColorPrimary: true },
+    select: { primaryLogoUrl: true },
   });
+  // Customer logo if set, otherwise the Takeo default.
+  const logoSrc = org?.primaryLogoUrl ?? "/takeo-icon.jpg";
   const initials = user.name
     ? user.name
         .split(/\s+/)
@@ -26,13 +27,13 @@ export async function AppHeader() {
     <header className="sticky top-0 z-20 border-b border-border/40 bg-background/80 backdrop-blur-xl backdrop-saturate-150">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:h-16 sm:px-6">
         <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
-          <Image
-            src="/takeo-icon.jpg"
-            alt="Takeo"
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={logoSrc}
+            alt={`${user.org.name} logo`}
             width={36}
             height={36}
-            className="rounded-lg"
-            priority
+            className="h-9 w-9 rounded-lg object-contain"
           />
           <div className="flex flex-col">
             <span className="text-sm font-semibold tracking-tight text-foreground sm:text-base">
@@ -43,7 +44,7 @@ export async function AppHeader() {
             </span>
           </div>
         </Link>
-        
+
         <nav className="flex items-center gap-4 sm:gap-6">
           <SignOutButton />
           <Link
