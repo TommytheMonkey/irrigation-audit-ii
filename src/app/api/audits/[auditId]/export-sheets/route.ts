@@ -116,7 +116,7 @@ export async function POST(
   }
 
   // ── Real Google mode ────────────────────────────────────────────────────
-  if (!org.googleCredentialsEnc || !org.googleDriveFolderId) {
+  if (!org.googleCredentialsEnc) {
     return NextResponse.json(
       {
         error: "google_not_configured",
@@ -129,6 +129,10 @@ export async function POST(
   try {
     const accessToken = await getAccessTokenForOrg(org.googleCredentialsEnc);
 
+    // If the org hasn't picked a Drive folder, land the hierarchy in My
+    // Drive's root — Google accepts the literal "root" as a parent alias.
+    const exportRoot = org.googleDriveFolderId ?? "root";
+
     // Build folder hierarchy: {root}/Property Reports/{Property}/audit-{date}/
     const auditDate = (audit.completedAt ?? audit.startedAt)
       .toISOString()
@@ -136,7 +140,7 @@ export async function POST(
     const reportsFolder = await findOrCreateFolder(
       accessToken,
       "Property Reports",
-      org.googleDriveFolderId,
+      exportRoot,
     );
     const propertyFolder = await findOrCreateFolder(
       accessToken,
