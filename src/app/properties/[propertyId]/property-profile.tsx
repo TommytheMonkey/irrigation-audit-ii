@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -367,6 +367,7 @@ function SystemOverview({
 
   return (
     <div className="flex flex-col gap-4">
+      {canEdit && <ImportDocumentCard systemId={system.id} />}
       <SystemHeaderCard system={system} canEdit={canEdit} onDelete={deleteSystem} deletePending={deletePending} />
       <OnSiteContactCard system={system} canEdit={canEdit} />
       <BackflowCard system={system} canEdit={canEdit} />
@@ -384,6 +385,98 @@ function SystemOverview({
         </Card>
       )}
     </div>
+  );
+}
+
+function ImportDocumentCard({ systemId }: { systemId: string }) {
+  const router = useRouter();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [pending, start] = useTransition();
+
+  function pick() {
+    fileRef.current?.click();
+  }
+
+  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    const lower = file.name.toLowerCase();
+    if (!lower.endsWith(".xlsx") && !lower.endsWith(".xlsm") && !lower.endsWith(".pdf")) {
+      toast.error("Upload an .xlsx or .pdf file.");
+      return;
+    }
+    // Vercel Hobby has a ~4.5 MB body limit. Warn the user before wasting a
+    // Claude call on a request that'll be rejected at the edge.
+    if (file.size > 4.4 * 1024 * 1024) {
+      toast.error(
+        `${file.name} is ${(file.size / 1024 / 1024).toFixed(1)} MB — over the 4.5 MB upload limit on this plan.`,
+      );
+      return;
+    }
+
+    start(async () => {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(
+        `/api/property-systems/${systemId}/import-document`,
+        { method: "POST", body: form },
+      );
+      const data = (await res.json().catch(() => ({}))) as
+        | {
+            ok: true;
+            zonesCreated: number;
+            zonesSkipped: number;
+            partsCreated: number;
+            fileKind: string;
+          }
+        | { error: string; message?: string };
+      if (!res.ok || !("ok" in data)) {
+        const msg = "message" in data ? data.message : "Import failed.";
+        toast.error(msg ?? "Import failed.");
+        return;
+      }
+      const skipped = data.zonesSkipped
+        ? ` (${data.zonesSkipped} zones skipped — numbers already in use)`
+        : "";
+      toast.success(
+        `Imported ${data.zonesCreated} zones, ${data.partsCreated} parts${skipped}.`,
+      );
+      router.refresh();
+    });
+  }
+
+  return (
+    <Card className="border-dashed">
+      <CardHeader>
+        <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+          <div>
+            <CardTitle className="text-base">Import from file</CardTitle>
+            <CardDescription>
+              Upload an .xlsx takeoff worksheet or a .pdf as-built. Claude
+              will extract zones and parts and append them to this system.
+            </CardDescription>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={pick}
+            disabled={pending}
+            className="h-11 w-full sm:w-auto"
+          >
+            {pending ? "Reading…" : "Choose file"}
+          </Button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".xlsx,.xlsm,.pdf"
+            className="hidden"
+            onChange={onFile}
+          />
+        </div>
+      </CardHeader>
+    </Card>
   );
 }
 
