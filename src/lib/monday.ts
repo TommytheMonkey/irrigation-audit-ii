@@ -38,6 +38,9 @@ const MONDAY_API = "https://api.monday.com/v2";
 // ─────────────────────────────────────────────────────────────────────────────
 
 function isMockMode(): boolean {
+  // Prod-guarded so a stray MONDAY_MOCK=true in Vercel env can't silently
+  // replace the real Monday API with the canned five-property dataset.
+  if (process.env.NODE_ENV === "production") return false;
   return process.env.MONDAY_MOCK === "true";
 }
 

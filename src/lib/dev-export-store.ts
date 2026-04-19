@@ -22,7 +22,11 @@ export type MockExportFile = {
   payload: SheetPayload;
 };
 
+// Dev-only mock path. Guarded by NODE_ENV so even if GOOGLE_MOCK=true
+// somehow ends up in prod (e.g., a .env got re-imported), the filesystem
+// write that breaks on Vercel's read-only /var/task stays off.
 export function isMockMode(): boolean {
+  if (process.env.NODE_ENV === "production") return false;
   return process.env.GOOGLE_MOCK === "true";
 }
 
