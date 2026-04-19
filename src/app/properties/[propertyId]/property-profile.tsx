@@ -174,6 +174,15 @@ export function PropertyProfile({
               zones={activeSystem.zones}
               files={activeSystem.files}
               canEdit={canEdit}
+              propertyName={property.name}
+              systemName={activeSystem.name}
+              audits={audits.map((a) => ({
+                id: a.id,
+                startedAt: a.startedAt,
+                status: a.status,
+                auditorName: a.auditor.name ?? a.auditor.email,
+                findingsCount: a._count.findings,
+              }))}
             />
           )}
         </>

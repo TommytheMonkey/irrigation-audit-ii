@@ -16,17 +16,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDate } from "@/lib/format";
+import { ReportWizard, type ReportWizardAudit } from "./report-wizard";
 
 export function SystemFiles({
   systemId,
   zones,
   files,
   canEdit,
+  audits,
+  propertyName,
+  systemName,
 }: {
   systemId: string;
   zones: PropertyZone[];
   files: SystemFile[];
   canEdit: boolean;
+  audits: ReportWizardAudit[];
+  propertyName: string;
+  systemName: string;
 }) {
   const [filterZoneId, setFilterZoneId] = useState<string>("all");
 
@@ -39,6 +46,14 @@ export function SystemFiles({
 
   return (
     <div className="flex flex-col gap-4">
+      {canEdit && (
+        <ReportWizard
+          systemId={systemId}
+          audits={audits}
+          propertyName={propertyName}
+          systemName={systemName}
+        />
+      )}
       {canEdit && <UploadCard systemId={systemId} zones={zones} />}
 
       <Card>
