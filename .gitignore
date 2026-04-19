@@ -48,6 +48,9 @@ yarn-error.log*
 # Local screenshot staging for bug reports
 /screenshots/
 
+# User guide drafts, demo screenplays, promo PDFs — distribute via Drive
+/user-guide/
+
 # vercel
 .vercel
 
