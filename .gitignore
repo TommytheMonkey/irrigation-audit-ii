@@ -42,6 +42,12 @@ yarn-error.log*
 # Tyler's archival reference material — ground truth is in REFERENCE_NOTES.md
 /reference/
 
+# Generated report PDFs (downloaded for local inspection)
+/sys_reports/
+
+# Local screenshot staging for bug reports
+/screenshots/
+
 # vercel
 .vercel
 
