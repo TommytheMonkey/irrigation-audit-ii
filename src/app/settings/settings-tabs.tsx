@@ -1,8 +1,5 @@
 import Link from "next/link";
 
-// Server-rendered tab strip. Driven by ?tab=… so the back button works and
-// links can be deep-linked from elsewhere (e.g. onboarding's "skip to
-// settings" eventually).
 const TABS = [
   { id: "company", label: "Company" },
   { id: "integrations", label: "Integrations" },
@@ -18,18 +15,18 @@ export function isValidTab(s: string | undefined): s is SettingsTabId {
 
 export function SettingsTabs({ current }: { current: SettingsTabId }) {
   return (
-    <nav className="mb-6 -mx-4 overflow-x-auto sm:mx-0">
-      <ul className="flex gap-1 border-b border-zinc-200 px-4 dark:border-zinc-800 sm:px-0">
+    <nav className="-mx-4 overflow-x-auto sm:mx-0">
+      <ul className="flex gap-1 rounded-xl bg-muted/50 p-1 sm:inline-flex">
         {TABS.map((t) => {
           const active = t.id === current;
           return (
             <li key={t.id}>
               <Link
                 href={`/settings?tab=${t.id}`}
-                className={`inline-block whitespace-nowrap px-3 py-2.5 text-sm transition-colors ${
+                className={`inline-flex items-center justify-center whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all ${
                   active
-                    ? "border-b-2 border-primary font-semibold text-foreground"
-                    : "border-b-2 border-transparent text-muted-foreground hover:text-foreground"
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-card/50 hover:text-foreground"
                 }`}
               >
                 {t.label}

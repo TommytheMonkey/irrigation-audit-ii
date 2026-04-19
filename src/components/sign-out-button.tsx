@@ -3,10 +3,8 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { LogOut } from "lucide-react";
 
-// Tiny client island used by AppHeader. Calls /api/auth/logout, then routes
-// back to /login. router.refresh() flushes the RSC cache so any cached
-// "current user" reads are dropped.
 export function SignOutButton() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -28,9 +26,10 @@ export function SignOutButton() {
       type="button"
       onClick={signOut}
       disabled={pending}
-      className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+      className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
     >
-      {pending ? "Signing out…" : "Sign out"}
+      <LogOut className="h-4 w-4" />
+      <span className="hidden sm:inline">{pending ? "Signing out..." : "Sign out"}</span>
     </button>
   );
 }

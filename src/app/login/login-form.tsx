@@ -5,10 +5,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Mail, ArrowRight, Loader2 } from "lucide-react";
 
-// Two states: collecting an email vs. "we sent it, check your inbox".
-// The dev shortcut button only renders when DEV_AUTO_LOGIN is set on the
-// server (passed in by the page).
 export function LoginForm({
   devAutoLoginEmail,
 }: {
@@ -56,20 +54,24 @@ export function LoginForm({
 
   if (sentTo) {
     return (
-      <div className="rounded-lg border border-zinc-200 bg-white p-5 text-center dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mb-2 text-2xl">📬</div>
-        <div className="font-medium">Check your email</div>
-        <div className="mt-1 text-sm text-muted-foreground">
-          We sent a sign-in link to <strong>{sentTo}</strong>. It expires in 15
-          minutes.
+      <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+          <Mail className="h-7 w-7 text-primary" />
         </div>
+        <h2 className="text-lg font-semibold text-foreground">Check your email</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          We sent a sign-in link to{" "}
+          <span className="font-medium text-foreground">{sentTo}</span>.
+          <br />
+          It expires in 15 minutes.
+        </p>
         <button
           type="button"
           onClick={() => {
             setSentTo(null);
             setEmail("");
           }}
-          className="mt-4 text-sm text-primary underline"
+          className="mt-5 text-sm font-medium text-primary transition-colors hover:text-primary/80"
         >
           Try a different email
         </button>
@@ -81,13 +83,13 @@ export function LoginForm({
   return (
     <form
       onSubmit={submit}
-      className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"
+      className="rounded-2xl border border-border bg-card p-6 shadow-sm"
     >
       <label
         htmlFor="email"
-        className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+        className="mb-2 block text-sm font-medium text-foreground"
       >
-        Email
+        Email address
       </label>
       <Input
         id="email"
@@ -97,16 +99,26 @@ export function LoginForm({
         placeholder="you@company.com"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        className="h-12 text-base"
+        className="h-12 rounded-xl border-border bg-background px-4 text-base transition-all focus-visible:ring-2 focus-visible:ring-primary/20"
         required
       />
       <Button
         type="submit"
         size="lg"
-        className="mt-3 h-12 w-full text-base"
+        className="mt-4 h-12 w-full gap-2 rounded-xl text-base font-semibold shadow-sm transition-all hover:shadow-md active:scale-[0.98]"
         disabled={pending}
       >
-        {pending ? "Sending…" : "Send Magic Link"}
+        {pending ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Sending...
+          </>
+        ) : (
+          <>
+            Continue with Email
+            <ArrowRight className="h-4 w-4" />
+          </>
+        )}
       </Button>
 
       {devAutoLoginEmail && (
@@ -116,7 +128,7 @@ export function LoginForm({
             type="button"
             variant="outline"
             size="lg"
-            className="mt-2 h-12 w-full"
+            className="mt-3 h-12 w-full rounded-xl"
             onClick={devLogin}
             disabled={pending}
           >
@@ -130,9 +142,8 @@ export function LoginForm({
 
 function DevHint() {
   return (
-    <div className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-      <strong>Dev mode:</strong> magic-link emails are logged to the server
-      console. Or use the dev login button below.
+    <div className="mt-4 rounded-xl bg-accent/50 px-4 py-3 text-xs text-foreground">
+      <span className="font-semibold">Dev mode:</span> Magic-link emails are logged to the server console.
     </div>
   );
 }
