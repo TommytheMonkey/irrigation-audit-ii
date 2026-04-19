@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { compressImage } from "@/lib/image-compress";
 
 export function LogoField({
   value,
@@ -18,17 +19,16 @@ export function LogoField({
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
-  async function handleFile(file: File) {
-    if (!/^image\//.test(file.type)) {
+  async function handleFile(rawFile: File) {
+    if (!/^image\//.test(rawFile.type)) {
       toast.error("Pick an image file.");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Image is larger than 5 MB.");
       return;
     }
     setUploading(true);
     try {
+      // Logos don't need to be huge — 1024px longest edge is plenty for
+      // the app header and any PDF cover usage.
+      const file = await compressImage(rawFile, { maxEdge: 1024 });
       const form = new FormData();
       form.append("file", file);
       const res = await fetch("/api/upload", { method: "POST", body: form });

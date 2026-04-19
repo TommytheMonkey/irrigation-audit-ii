@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
+import { compressImage } from "@/lib/image-compress";
 import {
   IssueType,
   SolutionAction,
@@ -670,7 +671,11 @@ function PhotoButton({
     setUploading(true);
     try {
       const uploaded: string[] = [];
-      for (const file of Array.from(files)) {
+      for (const rawFile of Array.from(files)) {
+        // Compress in-browser so iPhone photos (7–11 MB) fit under Vercel's
+        // 4.5 MB function body limit and upload in seconds instead of
+        // tens of seconds on mobile.
+        const file = await compressImage(rawFile);
         const fd = new FormData();
         fd.append("file", file);
         const res = await fetch("/api/upload", { method: "POST", body: fd });

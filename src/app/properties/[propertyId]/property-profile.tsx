@@ -15,6 +15,7 @@ import type {
   WiringType,
 } from "@prisma/client";
 import { SystemFiles } from "./system-files";
+import { compressImage } from "@/lib/image-compress";
 import {
   Card,
   CardContent,
@@ -305,8 +306,11 @@ function AddSystemWizard({
         return;
       }
       start(async () => {
+        // Compress before upload so iPhone photos of the zone chart (often
+        // 7–11 MB) fit under Vercel's 4.5 MB function body limit.
+        const compressed = await compressImage(photoFile);
         const form = new FormData();
-        form.append("file", photoFile);
+        form.append("file", compressed);
         form.append("propertyId", propertyId);
         form.append("name", trimmed);
         const res = await fetch("/api/property-systems/from-photo", {
@@ -425,12 +429,6 @@ function AddSystemWizard({
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   e.target.value = "";
-                  if (f && f.size > 4 * 1024 * 1024) {
-                    toast.error(
-                      `${f.name} is ${(f.size / 1024 / 1024).toFixed(1)} MB — over the 4 MB limit for this path. Resize the photo or upload a smaller one.`,
-                    );
-                    return;
-                  }
                   setPhotoFile(f ?? null);
                 }}
               />
