@@ -114,6 +114,11 @@ model Org {
   // "mock" means dev-mode JSON storage; otherwise it's a real Sheets ID.
   configSheetId        String?  @map("config_sheet_id")
   configSyncedAt       DateTime? @map("config_synced_at")
+  // When configSheetId = "mock", the JSON lives here. Previously this was a
+  // file on disk (dev-config/{orgId}-config.json) but Vercel's serverless
+  // filesystem is read-only, so it moved into the DB. Swap to the real
+  // Sheets sync when Google OAuth lands and this column becomes unused.
+  configMockJson       Json?    @map("config_mock_json")
   // Google OAuth (encrypted refresh token + the connected account email
   // shown in settings so users can see which Google account is wired up)
   googleConnectedEmail String?  @map("google_connected_email")
