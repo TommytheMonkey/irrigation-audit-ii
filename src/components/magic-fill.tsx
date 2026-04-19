@@ -23,8 +23,7 @@ export function MagicFill({
   const [url, setUrl] = useState("");
   const [pending, start] = useTransition();
 
-  function run(e: React.FormEvent) {
-    e.preventDefault();
+  function run() {
     if (!url.trim()) return;
     start(async () => {
       const res = await fetch("/api/settings/branding/magic-fill", {
@@ -57,10 +56,7 @@ export function MagicFill({
   }
 
   return (
-    <form
-      onSubmit={run}
-      className="flex flex-col gap-2 rounded-md border border-dashed border-zinc-300 bg-zinc-50/60 p-3 dark:border-zinc-700 dark:bg-zinc-900/30"
-    >
+    <div className="flex flex-col gap-2 rounded-md border border-dashed border-zinc-300 bg-zinc-50/60 p-3 dark:border-zinc-700 dark:bg-zinc-900/30">
       <Label htmlFor="magic-fill-url" className="text-sm">
         Magic Fill from website
       </Label>
@@ -72,6 +68,12 @@ export function MagicFill({
           id="magic-fill-url"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              run();
+            }
+          }}
           placeholder="https://yourcompany.com"
           type="url"
           inputMode="url"
@@ -79,15 +81,16 @@ export function MagicFill({
           className="h-11 flex-1"
         />
         <Button
-          type="submit"
+          type="button"
           size="lg"
           variant="secondary"
           className="h-11"
+          onClick={run}
           disabled={disabled || pending || !url.trim()}
         >
           {pending ? "Fetching…" : "Magic Fill"}
         </Button>
       </div>
-    </form>
+    </div>
   );
 }
