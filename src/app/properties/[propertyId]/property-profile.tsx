@@ -1554,6 +1554,36 @@ function SystemParts({
   canEdit: boolean;
 }) {
   const [adding, setAdding] = useState(false);
+  const router = useRouter();
+  const [matchPending, matchStart] = useTransition();
+
+  function runCatalogMatch() {
+    matchStart(async () => {
+      const res = await fetch("/api/property-parts/match-catalog", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ systemId: system.id }),
+      });
+      const data = (await res.json().catch(() => ({}))) as
+        | { ok: true; scanned: number; matched: number; unmatched: number }
+        | { error: string; message?: string };
+      if (!res.ok || !("ok" in data)) {
+        toast.error("Couldn't run catalog matcher.");
+        return;
+      }
+      if (data.scanned === 0) {
+        toast.message("All parts already matched to a catalog entry.");
+      } else {
+        toast.success(
+          `Matched ${data.matched} of ${data.scanned} unmatched parts.`,
+        );
+      }
+      router.refresh();
+    });
+  }
+
+  const unmatchedCount = system.parts.filter((p) => !p.catalogSymbol).length;
+
   return (
     <Card>
       <CardHeader>
@@ -1561,15 +1591,30 @@ function SystemParts({
           <div>
             <CardTitle className="text-base">Parts in use</CardTitle>
             <CardDescription>
-              Every part & piece used throughout this system. Phase 2 will
-              populate this automatically from Excel worksheets and as-builts.
+              Every part & piece used throughout this system. Imported from
+              Excel / as-builts when available; matched against vendor
+              catalogs for canonical part IDs.
             </CardDescription>
           </div>
-          {canEdit && (
-            <Button size="sm" variant="outline" onClick={() => setAdding(!adding)}>
-              {adding ? "Cancel" : "+ Add part"}
-            </Button>
-          )}
+          <div className="flex gap-2">
+            {canEdit && unmatchedCount > 0 && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={runCatalogMatch}
+                disabled={matchPending}
+                title={`${unmatchedCount} part${unmatchedCount === 1 ? "" : "s"} without a catalog match`}
+              >
+                {matchPending ? "Matching…" : "Match catalog"}
+              </Button>
+            )}
+            {canEdit && (
+              <Button size="sm" variant="outline" onClick={() => setAdding(!adding)}>
+                {adding ? "Cancel" : "+ Add part"}
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -1640,7 +1685,19 @@ function PartRow({ part, canEdit }: { part: PropertyPart; canEdit: boolean }) {
   return (
     <tr className="border-b border-zinc-100 dark:border-zinc-900">
       <td className="py-2 pr-3">{part.category ?? "—"}</td>
-      <td className="py-2 pr-3">{part.brand ?? "—"}</td>
+      <td className="py-2 pr-3">
+        <div className="flex flex-col gap-0.5">
+          <span>{part.brand ?? "—"}</span>
+          {part.catalogSymbol && (
+            <span
+              className="text-[10px] font-medium uppercase tracking-wide text-emerald-800 dark:text-emerald-300"
+              title={`Matched to ${part.catalogSource}: ${part.catalogSymbol}`}
+            >
+              ✓ Catalog
+            </span>
+          )}
+        </div>
+      </td>
       <td className="py-2 pr-3">{part.model ?? "—"}</td>
       <td className="py-2 pr-3">{part.size ?? "—"}</td>
       <td className="py-2 pr-3 text-right tabular-nums">{part.quantity ?? "—"}</td>

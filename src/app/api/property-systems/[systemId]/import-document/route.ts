@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { assertSystemInOrg, requireEditor } from "@/lib/system-profile-auth";
 import { extractFromPdf, extractFromXlsx } from "@/lib/system-extract";
+import { matchPart } from "@/lib/catalog-matcher";
 import type { ZoneType } from "@prisma/client";
 
 export const runtime = "nodejs";
@@ -108,15 +109,20 @@ export async function POST(
       : Promise.resolve({ count: 0 }),
     partsToCreate.length > 0
       ? db.propertyPart.createMany({
-          data: partsToCreate.map((p) => ({
-            systemId,
-            category: p.category,
-            brand: p.brand,
-            model: p.model,
-            size: p.size,
-            quantity: p.quantity == null ? null : Math.round(p.quantity),
-            notes: p.notes,
-          })),
+          data: partsToCreate.map((p) => {
+            const matched = matchPart(p.brand, p.model, p.size);
+            return {
+              systemId,
+              category: p.category,
+              brand: p.brand,
+              model: p.model,
+              size: p.size,
+              quantity: p.quantity == null ? null : Math.round(p.quantity),
+              notes: p.notes,
+              catalogSource: matched?.source ?? null,
+              catalogSymbol: matched?.symbol ?? null,
+            };
+          }),
         })
       : Promise.resolve({ count: 0 }),
   ]);
