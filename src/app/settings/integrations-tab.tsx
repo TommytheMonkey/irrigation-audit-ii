@@ -21,6 +21,7 @@ import {
 import { LogoField } from "@/components/logo-field";
 import { MagicFill, type MagicFillResult } from "@/components/magic-fill";
 import { DriveFolderPicker } from "./drive-folder-picker";
+import { PropertyImportCard } from "./property-import-card";
 
 // Settings → Integrations tab. Three cards: Monday.com, Google, Branding.
 // The Monday card has two modes: when not connected it shows the cred form;
@@ -250,6 +251,9 @@ export function IntegrationsTab({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Manual property import (xlsx or Google Sheet) */}
+      <PropertyImportCard canEdit={canEdit} />
+
       {/* Monday */}
       <Card>
         <CardHeader>
