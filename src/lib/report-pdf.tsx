@@ -156,17 +156,44 @@ function buildStyles(colors: BrandColors) {
     photoGrid: { flexDirection: "row", flexWrap: "wrap", marginTop: 6 },
     photo: { width: 110, height: 110, marginRight: 6, marginBottom: 6, objectFit: "cover" },
 
+    // Header (pages 2+, not cover)
+    header: {
+      position: "absolute",
+      top: 18,
+      left: 48,
+      right: 48,
+      paddingBottom: 8,
+      borderBottomWidth: 0.5,
+      borderBottomStyle: "solid",
+      borderBottomColor: "#d4d4d4",
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    headerLeft: { flexDirection: "row", alignItems: "center", gap: 6, flex: 1 },
+    headerLogo: { width: 20, height: 20, objectFit: "contain" },
+    headerTitle: { fontSize: 9, fontWeight: "bold", color: "#333" },
+    headerMeta: { fontSize: 8, color: "#777", textAlign: "right" },
+
     // Footer
     footer: {
       position: "absolute",
-      bottom: 24,
+      bottom: 20,
       left: 48,
       right: 48,
-      fontSize: 8,
-      color: "#888",
       flexDirection: "row",
       justifyContent: "space-between",
+      alignItems: "flex-end",
     },
+    footerLeft: { flex: 1 },
+    footerOrg: { fontSize: 8, color: "#777" },
+    footerPoweredBy: {
+      fontSize: 7,
+      color: "#aaa",
+      fontFamily: "Helvetica-Oblique",
+      marginTop: 1,
+    },
+    footerPage: { fontSize: 8, color: "#777" },
   });
 }
 
@@ -194,7 +221,8 @@ export function ReportDocument({ data }: { data: ReportData }) {
         <Footer data={data} styles={s} />
       </Page>
 
-      <Page size="LETTER" style={s.page}>
+      <Page size="LETTER" style={[s.page, { paddingTop: 56 }]}>
+        <Header data={data} styles={s} />
         <SystemSummary data={data} styles={s} />
         {data.sections.zones && <ZonesTable data={data} styles={s} />}
         {data.sections.parts && <PartsTable data={data} styles={s} />}
@@ -202,12 +230,29 @@ export function ReportDocument({ data }: { data: ReportData }) {
       </Page>
 
       {data.audit && data.sections.auditFindings && (
-        <Page size="LETTER" style={s.page}>
+        <Page size="LETTER" style={[s.page, { paddingTop: 56 }]}>
+          <Header data={data} styles={s} />
           <AuditFindings data={data} styles={s} />
           <Footer data={data} styles={s} />
         </Page>
       )}
     </Document>
+  );
+}
+
+function Header({ data, styles }: { data: ReportData; styles: Styles }) {
+  return (
+    <View style={styles.header} fixed>
+      <View style={styles.headerLeft}>
+        {data.org.primaryLogoUrl && (
+          <Image src={data.org.primaryLogoUrl} style={styles.headerLogo} />
+        )}
+        <Text style={styles.headerTitle}>
+          {data.property.name} · {data.system.name}
+        </Text>
+      </View>
+      <Text style={styles.headerMeta}>{data.title}</Text>
+    </View>
   );
 }
 
@@ -553,8 +598,14 @@ function AuditFindings({ data, styles }: { data: ReportData; styles: Styles }) {
 function Footer({ data, styles }: { data: ReportData; styles: Styles }) {
   return (
     <View style={styles.footer} fixed>
-      <Text>{data.org.name}</Text>
+      <View style={styles.footerLeft}>
+        <Text style={styles.footerOrg}>{data.org.name}</Text>
+        <Text style={styles.footerPoweredBy}>
+          Powered by Takeo by Takeoff Monkey
+        </Text>
+      </View>
       <Text
+        style={styles.footerPage}
         render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
       />
     </View>
