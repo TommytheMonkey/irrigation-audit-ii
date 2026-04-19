@@ -10,9 +10,11 @@ import type {
   PropertyWaterSource,
   PropertyZone,
   PropertyPart,
+  SystemFile,
   ZoneType,
   WiringType,
 } from "@prisma/client";
+import { SystemFiles } from "./system-files";
 import {
   Card,
   CardContent,
@@ -36,6 +38,7 @@ type SystemFull = PropertySystem & {
   waterSources: PropertyWaterSource[];
   zones: PropertyZone[];
   parts: PropertyPart[];
+  files: SystemFile[];
 };
 
 type AuditRow = {
@@ -70,34 +73,12 @@ export function PropertyProfile({
   const [activeSystemId, setActiveSystemId] = useState<string | null>(
     systems[0]?.id ?? null,
   );
-  const [subTab, setSubTab] = useState<"overview" | "parts">("overview");
-  const router = useRouter();
+  const [subTab, setSubTab] = useState<"overview" | "parts" | "files">(
+    "overview",
+  );
   const [addingSystem, setAddingSystem] = useState(false);
-  const [newSystemName, setNewSystemName] = useState("");
-  const [addSystemPending, addSystemStart] = useTransition();
 
   const activeSystem = systems.find((s) => s.id === activeSystemId) ?? null;
-
-  function createSystem(e: React.FormEvent) {
-    e.preventDefault();
-    addSystemStart(async () => {
-      const res = await fetch("/api/property-systems", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ propertyId: property.id, name: newSystemName.trim() }),
-      });
-      const data = (await res.json().catch(() => ({}))) as PropertySystem;
-      if (!res.ok) {
-        toast.error("Couldn't add system.");
-        return;
-      }
-      toast.success(`${data.name} added.`);
-      setNewSystemName("");
-      setAddingSystem(false);
-      setActiveSystemId(data.id);
-      router.refresh();
-    });
-  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -158,40 +139,14 @@ export function PropertyProfile({
       </div>
 
       {addingSystem && (
-        <Card>
-          <CardContent className="pt-6">
-            <form onSubmit={createSystem} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="flex-1">
-                <Label htmlFor="new-system-name">System name</Label>
-                <Input
-                  id="new-system-name"
-                  value={newSystemName}
-                  onChange={(e) => setNewSystemName(e.target.value)}
-                  placeholder="e.g. Front, Rear, System 1"
-                  autoFocus
-                  required
-                  className="mt-1.5 h-11"
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
-                    setAddingSystem(false);
-                    setNewSystemName("");
-                  }}
-                  disabled={addSystemPending}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={addSystemPending}>
-                  {addSystemPending ? "Adding…" : "Add system"}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+        <AddSystemWizard
+          propertyId={property.id}
+          onCancel={() => setAddingSystem(false)}
+          onCreated={(id) => {
+            setAddingSystem(false);
+            setActiveSystemId(id);
+          }}
+        />
       )}
 
       {/* Active system */}
@@ -204,12 +159,22 @@ export function PropertyProfile({
             <SubTabButton active={subTab === "parts"} onClick={() => setSubTab("parts")}>
               Parts in use ({activeSystem.parts.length})
             </SubTabButton>
+            <SubTabButton active={subTab === "files"} onClick={() => setSubTab("files")}>
+              Files ({activeSystem.files.length})
+            </SubTabButton>
           </div>
 
           {subTab === "overview" ? (
             <SystemOverview system={activeSystem} canEdit={canEdit} />
-          ) : (
+          ) : subTab === "parts" ? (
             <SystemParts system={activeSystem} canEdit={canEdit} />
+          ) : (
+            <SystemFiles
+              systemId={activeSystem.id}
+              zones={activeSystem.zones}
+              files={activeSystem.files}
+              canEdit={canEdit}
+            />
           )}
         </>
       ) : (
@@ -292,6 +257,196 @@ export function PropertyProfile({
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-components
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Add-system wizard
+// Two paths: blank create (POST /api/property-systems) or zone-chart photo
+// (POST /api/property-systems/from-photo — creates the system AND extracts
+// zones from the photo via Claude vision). After creation the parent
+// switches the active tab to the new system so the user lands on it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AddSystemWizard({
+  propertyId,
+  onCancel,
+  onCreated,
+}: {
+  propertyId: string;
+  onCancel: () => void;
+  onCreated: (systemId: string) => void;
+}) {
+  const router = useRouter();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [name, setName] = useState("");
+  const [method, setMethod] = useState<"blank" | "photo">("blank");
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [pending, start] = useTransition();
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) {
+      toast.error("Give the system a name first.");
+      return;
+    }
+
+    if (method === "photo") {
+      if (!photoFile) {
+        toast.error("Pick a photo to extract from.");
+        return;
+      }
+      start(async () => {
+        const form = new FormData();
+        form.append("file", photoFile);
+        form.append("propertyId", propertyId);
+        form.append("name", trimmed);
+        const res = await fetch("/api/property-systems/from-photo", {
+          method: "POST",
+          body: form,
+        });
+        const data = (await res.json().catch(() => ({}))) as
+          | { ok: true; systemId: string; zonesCreated: number }
+          | { error: string; message?: string };
+        if (!res.ok || !("ok" in data)) {
+          const msg = "message" in data ? data.message : "Couldn't create system.";
+          toast.error(msg ?? "Couldn't create system.");
+          return;
+        }
+        toast.success(
+          `${trimmed} added with ${data.zonesCreated} ${data.zonesCreated === 1 ? "zone" : "zones"} extracted.`,
+        );
+        onCreated(data.systemId);
+        router.refresh();
+      });
+    } else {
+      start(async () => {
+        const res = await fetch("/api/property-systems", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ propertyId, name: trimmed }),
+        });
+        const data = (await res.json().catch(() => ({}))) as PropertySystem & {
+          error?: string;
+        };
+        if (!res.ok || !data.id) {
+          toast.error("Couldn't create system.");
+          return;
+        }
+        toast.success(`${data.name} added.`);
+        onCreated(data.id);
+        router.refresh();
+      });
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Add a system</CardTitle>
+        <CardDescription>
+          Name it, then either start blank or upload a zone-chart photo to
+          pre-populate zones.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={submit} className="flex flex-col gap-4">
+          <div>
+            <Label htmlFor="new-system-name">System name</Label>
+            <Input
+              id="new-system-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Front, Rear, System 1"
+              autoFocus
+              required
+              className="mt-1.5 h-11"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="flex cursor-pointer items-start gap-2 rounded-md border border-zinc-200 p-3 has-[:checked]:border-primary has-[:checked]:bg-primary/5 dark:border-zinc-800">
+              <input
+                type="radio"
+                name="add-method"
+                checked={method === "blank"}
+                onChange={() => setMethod("blank")}
+                className="mt-0.5"
+              />
+              <div>
+                <div className="text-sm font-medium">Start blank</div>
+                <div className="text-xs text-muted-foreground">
+                  Add zones manually as you walk the site.
+                </div>
+              </div>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 rounded-md border border-zinc-200 p-3 has-[:checked]:border-primary has-[:checked]:bg-primary/5 dark:border-zinc-800">
+              <input
+                type="radio"
+                name="add-method"
+                checked={method === "photo"}
+                onChange={() => setMethod("photo")}
+                className="mt-0.5"
+              />
+              <div>
+                <div className="text-sm font-medium">From zone-chart photo</div>
+                <div className="text-xs text-muted-foreground">
+                  Upload a photo of the chart inside the controller door —
+                  Claude will extract the zones.
+                </div>
+              </div>
+            </label>
+          </div>
+
+          {method === "photo" && (
+            <div className="rounded-md border border-dashed border-zinc-300 p-3 dark:border-zinc-700">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => fileRef.current?.click()}
+                disabled={pending}
+                className="h-11"
+              >
+                {photoFile ? `Change photo — ${photoFile.name}` : "Choose photo"}
+              </Button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f && f.size > 4 * 1024 * 1024) {
+                    toast.error(
+                      `${f.name} is ${(f.size / 1024 / 1024).toFixed(1)} MB — over the 4 MB limit for this path. Resize the photo or upload a smaller one.`,
+                    );
+                    return;
+                  }
+                  setPhotoFile(f ?? null);
+                }}
+              />
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={onCancel} disabled={pending}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={pending}>
+              {pending
+                ? method === "photo"
+                  ? "Extracting…"
+                  : "Adding…"
+                : method === "photo"
+                  ? "Extract & create"
+                  : "Create system"}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
 
 function SubTabButton({
   active,

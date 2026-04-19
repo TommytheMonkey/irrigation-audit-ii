@@ -155,8 +155,9 @@ model User {
   lastLoginAt DateTime? @map("last_login_at")
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  org         Org       @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  audits      Audit[]   @relation("AuditAuditor")
+  org             Org          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  audits          Audit[]      @relation("AuditAuditor")
+  uploadedFiles   SystemFile[]
 
   @@index([orgId])
   @@map("users")
@@ -260,6 +261,7 @@ model PropertySystem {
   waterSources PropertyWaterSource[]
   zones        PropertyZone[]
   parts        PropertyPart[]
+  files        SystemFile[]
 
   @@index([propertyId])
   @@index([orgId])
@@ -324,6 +326,7 @@ model PropertyZone {
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   system PropertySystem @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  files  SystemFile[]
 
   @@unique([systemId, zoneNumber])
   @@index([systemId])
@@ -352,6 +355,45 @@ model PropertyPart {
 
   @@index([systemId])
   @@map("property_parts")
+}
+
+// Files attached to a system (or to a specific zone within the system).
+// Primary storage is Vercel Blob so uploads can be any size via client-side
+// upload. Optionally mirrored to the org's Google Drive for off-platform
+// archival — driveFileId/driveArchivedAt track that.
+//
+// Freeform tags per user request — no enum, any string they want to type.
+model SystemFile {
+  id                String    @id @default(cuid())
+  systemId          String    @map("system_id")
+  // Null = system-level file (as-built, worksheet, etc.). Set = per-zone.
+  zoneId            String?   @map("zone_id")
+  uploadedById      String    @map("uploaded_by_id")
+
+  filename          String
+  mimeType          String    @map("mime_type")
+  sizeBytes         Int       @map("size_bytes")
+  // Vercel Blob public URL, used for viewing + Drive mirror.
+  blobUrl           String    @map("blob_url")
+  // Set by @vercel/blob so we can delete from Blob when removing the row.
+  blobPathname      String    @map("blob_pathname")
+
+  // Google Drive mirror (optional, populated by the archive-to-Drive action).
+  driveFileId       String?   @map("drive_file_id")
+  driveWebViewLink  String?   @map("drive_web_view_link")
+  driveArchivedAt   DateTime? @map("drive_archived_at")
+
+  tags              String[]  @default([])
+  description       String?
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  system            PropertySystem @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  zone              PropertyZone?  @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  uploader          User           @relation(fields: [uploadedById], references: [id])
+
+  @@index([systemId])
+  @@index([zoneId])
+  @@map("system_files")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

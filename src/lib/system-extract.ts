@@ -184,3 +184,41 @@ export async function extractFromPdf(
     },
   ]);
 }
+
+type ImageMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+
+/**
+ * Extract zones from a photo — typically the zone chart on the inside of a
+ * controller door. Expect list rows like "Zone 1 — Front turf — 15 min".
+ * Parts are rarely present on these charts so we tell Claude to leave the
+ * parts array empty if nothing's there.
+ */
+export async function extractFromImage(
+  bytes: Buffer,
+  filename: string,
+  mimeType: string,
+): Promise<ExtractedProfile> {
+  const media = normalizeImageMediaType(mimeType);
+  return callClaude([
+    {
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: media,
+        data: bytes.toString("base64"),
+      },
+    },
+    {
+      type: "text",
+      text: `${EXTRACT_USER}\n\n---\n\nSource file: ${filename} (photo — likely a zone chart from the inside of an irrigation controller door, or a handwritten zone list). Extract every zone shown. Parts/quantities usually aren't on zone charts, so return [] for parts unless you clearly see a parts list.`,
+    },
+  ]);
+}
+
+function normalizeImageMediaType(mime: string): ImageMediaType {
+  const lower = mime.toLowerCase();
+  if (lower.includes("png")) return "image/png";
+  if (lower.includes("gif")) return "image/gif";
+  if (lower.includes("webp")) return "image/webp";
+  return "image/jpeg";
+}

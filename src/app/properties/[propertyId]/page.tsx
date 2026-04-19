@@ -25,6 +25,7 @@ export default async function PropertyDetailPage({
           waterSources: { orderBy: { sortOrder: "asc" } },
           zones: { orderBy: { zoneNumber: "asc" } },
           parts: { orderBy: { createdAt: "asc" } },
+          files: { orderBy: { createdAt: "desc" } },
         },
       },
       audits: {
