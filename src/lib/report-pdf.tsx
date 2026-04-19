@@ -35,7 +35,15 @@ Font.register({
   ],
 });
 
-type BrandColors = { primary: string; primaryFg: string; secondary: string };
+type BrandColors = {
+  primary: string;      // filled-element color (banner bg, etc.)
+  primaryFg: string;    // text color on top of primary-filled backgrounds
+  primaryText: string;  // usable for text / borders on white pages — if
+                        // primary is too light to read, this becomes a
+                        // dark neutral instead. Users set brand yellow
+                        // and we'd otherwise ship yellow section titles.
+  secondary: string;
+};
 
 function resolveColors(
   brandColorPrimary: string | null,
@@ -47,18 +55,31 @@ function resolveColors(
     primary,
     secondary,
     primaryFg: foregroundFor(primary),
+    primaryText: readableOnWhite(primary),
   };
 }
 
-function foregroundFor(hex: string): string {
+// Luminance-weighted average; threshold tuned so yellow (#F2EC76 ≈ 225)
+// falls back to dark and jungle-green (#00391F ≈ 46) stays as-is.
+function luminance(hex: string): number {
   const m = hex.match(/^#([0-9a-f]{6})$/i);
-  if (!m) return "#ffffff";
+  if (!m) return 128;
   const n = parseInt(m[1], 16);
   const r = (n >> 16) & 0xff;
   const g = (n >> 8) & 0xff;
   const b = n & 0xff;
-  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-  return lum > 140 ? "#000000" : "#ffffff";
+  return 0.299 * r + 0.587 * g + 0.114 * b;
+}
+
+function foregroundFor(hex: string): string {
+  return luminance(hex) > 140 ? "#000000" : "#ffffff";
+}
+
+// Dark enough to read as text on white? If yes, use it; if not (yellow,
+// light blue, etc.), fall back to a near-black so section titles don't
+// disappear into the page.
+function readableOnWhite(hex: string, fallback = "#1a1a1a"): string {
+  return luminance(hex) > 160 ? fallback : hex;
 }
 
 function buildStyles(colors: BrandColors) {
@@ -97,7 +118,7 @@ function buildStyles(colors: BrandColors) {
       marginBottom: 10,
       paddingBottom: 4,
       borderBottomWidth: 1,
-      borderBottomColor: colors.primary,
+      borderBottomColor: colors.primaryText,
       borderBottomStyle: "solid",
     },
     subsectionTitle: {
@@ -105,7 +126,7 @@ function buildStyles(colors: BrandColors) {
       fontWeight: "bold",
       marginTop: 10,
       marginBottom: 6,
-      color: colors.primary,
+      color: colors.primaryText,
     },
 
     // Summary grid
@@ -121,7 +142,7 @@ function buildStyles(colors: BrandColors) {
       paddingVertical: 6,
       paddingHorizontal: 4,
       borderBottomWidth: 1,
-      borderBottomColor: colors.primary,
+      borderBottomColor: colors.primaryText,
       borderBottomStyle: "solid",
       fontSize: 9,
       fontWeight: "bold",
@@ -145,7 +166,7 @@ function buildStyles(colors: BrandColors) {
       paddingHorizontal: 10,
       borderLeftWidth: 3,
       borderLeftStyle: "solid",
-      borderLeftColor: colors.primary,
+      borderLeftColor: colors.primaryText,
       backgroundColor: "#fafafa",
     },
     findingTitle: { fontSize: 11, fontWeight: "bold", marginBottom: 2 },
