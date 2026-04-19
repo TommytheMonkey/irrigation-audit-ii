@@ -1,7 +1,8 @@
 import { AppHeader } from "@/components/app-header";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
-import { mockConfigPath, readMockConfig } from "@/lib/config-mock";
+import { readMockConfig } from "@/lib/config-mock";
+import { sheetEditUrl } from "@/lib/config-sheet";
 import { SettingsTabs, isValidTab, type SettingsTabId } from "./settings-tabs";
 import { CompanyTab } from "./company-tab";
 import { IntegrationsTab } from "./integrations-tab";
@@ -159,7 +160,11 @@ async function ConfigTabPanel({ orgId }: { orgId: string }) {
     await Promise.all([
       db.org.findUniqueOrThrow({
         where: { id: orgId },
-        select: { configSheetId: true, configSyncedAt: true },
+        select: {
+          configSheetId: true,
+          configSyncedAt: true,
+          googleCredentialsEnc: true,
+        },
       }),
       readMockConfig(orgId),
       db.componentType.count({ where: { orgId, isActive: true } }),
@@ -168,12 +173,17 @@ async function ConfigTabPanel({ orgId }: { orgId: string }) {
     ]);
   const initialized = org.configSheetId !== null;
   const isMock = org.configSheetId === "mock";
+  const sheetUrl =
+    initialized && !isMock && org.configSheetId
+      ? sheetEditUrl(org.configSheetId)
+      : null;
   return (
     <ConfigTab
       initialized={initialized}
       isMock={isMock}
       syncedAt={org.configSyncedAt}
-      mockPath={isMock ? mockConfigPath(orgId) : null}
+      sheetUrl={sheetUrl}
+      googleConnected={org.googleCredentialsEnc !== null}
       hasMockFile={mockJson !== null}
       componentCount={componentCount}
       quickPickCount={quickPickCount}

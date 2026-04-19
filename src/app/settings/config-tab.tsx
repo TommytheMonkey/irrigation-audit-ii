@@ -1,13 +1,16 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfigCardActions } from "./config-card-actions";
 
-// Settings → Config tab. Lifted out of the original settings/page.tsx so the
-// page is now just a tab dispatcher. Functionality is unchanged.
+// Settings → Config tab. Two modes:
+//   - Sheets: real Google Spreadsheet, edit there, sync back.
+//   - Mock: fallback when Google isn't connected — stored as JSON in the
+//     org row. No UI editor; reconnect Google to switch.
 export function ConfigTab({
   initialized,
   isMock,
   syncedAt,
-  mockPath,
+  sheetUrl,
+  googleConnected,
   hasMockFile,
   componentCount,
   quickPickCount,
@@ -16,7 +19,8 @@ export function ConfigTab({
   initialized: boolean;
   isMock: boolean;
   syncedAt: Date | null;
-  mockPath: string | null;
+  sheetUrl: string | null;
+  googleConnected: boolean;
   hasMockFile: boolean;
   componentCount: number;
   quickPickCount: number;
@@ -44,18 +48,37 @@ export function ConfigTab({
           </div>
         ) : (
           <div className="rounded-lg border border-dashed border-zinc-300 px-4 py-6 text-center text-sm text-muted-foreground dark:border-zinc-700">
-            Not initialized yet. Click below to snapshot the global defaults
-            into your org&apos;s config so you can start editing.
+            {googleConnected ? (
+              <>
+                Not initialized yet. Click below to create a Google Sheet
+                populated with the default taxonomy.
+              </>
+            ) : (
+              <>
+                Not initialized yet. Connect Google in{" "}
+                <strong>Integrations</strong> to get a real editable sheet,
+                or click below to start in mock mode.
+              </>
+            )}
           </div>
         )}
 
-        {isMock && mockPath && (
+        {sheetUrl && (
+          <a
+            href={sheetUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-900 shadow-sm transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+          >
+            Open in Google Sheets ↗
+          </a>
+        )}
+
+        {isMock && (
           <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-            <strong>Dev mode:</strong> the &quot;sheet&quot; is a JSON file at
-            <code className="ml-1 break-all rounded bg-amber-100 px-1 py-0.5 dark:bg-amber-900/40">
-              {mockPath}
-            </code>
-            . Edit it by hand, then click <em>Sync now</em>.
+            <strong>Mock mode:</strong> the config is stored as JSON in the
+            database because Google isn&apos;t connected. Connect Google in
+            Integrations and re-initialize to get an editable Google Sheet.
           </div>
         )}
 

@@ -69,17 +69,9 @@ export function ConfigCardActions({
             >
               {pending ? "Syncing…" : "Sync now"}
             </Button>
-            {hasMockFile && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  toast.info("Open the JSON file shown above in your editor");
-                }}
-              >
-                Open config
-              </Button>
-            )}
+            {/* The "Open config" button was for the old file-based mock —
+                removed now that mock storage lives in a DB column. Real
+                sheets get their own "Open in Google Sheets" link above. */}
             {confirmReset ? (
               <>
                 <Button
