@@ -20,6 +20,7 @@ import {
 } from "@/lib/monday-types";
 import { LogoField } from "@/components/logo-field";
 import { MagicFill, type MagicFillResult } from "@/components/magic-fill";
+import { DriveFolderPicker } from "./drive-folder-picker";
 
 // Settings → Integrations tab. Three cards: Monday.com, Google, Branding.
 // The Monday card has two modes: when not connected it shows the cred form;
@@ -38,6 +39,7 @@ export function IntegrationsTab({
     propertiesSyncedAt: string | null;
     propertyCount: number;
     googleConnectedEmail: string | null;
+    googleDriveFolderId: string | null;
     brandingPrimary: string | null;
     brandingSecondary: string | null;
     brandingLogo: string | null;
@@ -477,6 +479,10 @@ export function IntegrationsTab({
               <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
                 Connected as <strong>{initial.googleConnectedEmail}</strong>
               </div>
+              <DriveFolderPicker
+                currentFolderId={initial.googleDriveFolderId ?? null}
+                canEdit={canEdit}
+              />
               {canEdit && (
                 <Button
                   type="button"
