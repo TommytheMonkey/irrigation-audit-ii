@@ -186,6 +186,11 @@ model Property {
   city                 String?
   state                String?
   zip                  String?
+  // Geocoded once from address+city+state+zip via Google Geocoding API. Null
+  // until geocoded (address missing, geocode failed, or pre-geocode rows).
+  latitude             Float?
+  longitude            Float?
+  geocodedAt           DateTime? @map("geocoded_at")
   propertyManagerName  String?   @map("property_manager_name")
   propertyManagerEmail String?   @map("property_manager_email")
   propertyManagerPhone String?   @map("property_manager_phone")

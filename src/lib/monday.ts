@@ -10,6 +10,7 @@
 
 import { db } from "./db";
 import { decrypt } from "./encryption";
+import { geocodeAddress } from "./geocode";
 import {
   PROPERTY_FIELDS,
   type ColumnMapping,
@@ -364,13 +365,24 @@ export async function syncProperties(orgId: string): Promise<SyncResult> {
   }
 
   // Pull existing rows once so we can decide create-vs-update without N+1.
+  // Include the address fields + lat/lng so we only re-geocode when the
+  // address actually changed.
   const existing = await db.property.findMany({
     where: { orgId },
-    select: { id: true, mondayItemId: true },
+    select: {
+      id: true,
+      mondayItemId: true,
+      address: true,
+      city: true,
+      state: true,
+      zip: true,
+      latitude: true,
+      longitude: true,
+    },
   });
-  const byMondayId = new Map<string, string>();
+  const byMondayId = new Map<string, (typeof existing)[number]>();
   for (const p of existing) {
-    if (p.mondayItemId) byMondayId.set(p.mondayItemId, p.id);
+    if (p.mondayItemId) byMondayId.set(p.mondayItemId, p);
   }
   const seenMondayIds = new Set<string>();
 
@@ -379,21 +391,60 @@ export async function syncProperties(orgId: string): Promise<SyncResult> {
 
   for (const item of items) {
     seenMondayIds.add(item.id);
+    const address = pick(item, mapping.address);
+    const city = pick(item, mapping.city);
+    const state = pick(item, mapping.state);
+    const zip = pick(item, mapping.zip);
+    const existingRow = byMondayId.get(item.id);
+
+    // Geocode only when the address is new/changed or we're missing coords.
+    const addressChanged =
+      !existingRow ||
+      existingRow.address !== address ||
+      existingRow.city !== city ||
+      existingRow.state !== state ||
+      existingRow.zip !== zip;
+    const missingCoords =
+      !existingRow ||
+      existingRow.latitude === null ||
+      existingRow.longitude === null;
+    const shouldGeocode = addressChanged || missingCoords;
+
+    let geoPatch: {
+      latitude?: number | null;
+      longitude?: number | null;
+      geocodedAt?: Date | null;
+    } = {};
+    if (shouldGeocode) {
+      const coords = await geocodeAddress(address, city, state, zip);
+      if (coords) {
+        geoPatch = {
+          latitude: coords.lat,
+          longitude: coords.lng,
+          geocodedAt: new Date(),
+        };
+      } else if (addressChanged) {
+        // Address changed but geocoding failed — clear stale coords so we
+        // don't keep a marker pinned to the old location.
+        geoPatch = { latitude: null, longitude: null, geocodedAt: null };
+      }
+    }
+
     const data = {
       name: item.name,
-      address: pick(item, mapping.address),
-      city: pick(item, mapping.city),
-      state: pick(item, mapping.state),
-      zip: pick(item, mapping.zip),
+      address,
+      city,
+      state,
+      zip,
       propertyManagerName: pick(item, mapping.pmName),
       propertyManagerEmail: pick(item, mapping.pmEmail),
       propertyManagerPhone: pick(item, mapping.pmPhone),
       syncedFromMondayAt: new Date(),
       syncStatus: "active" as const,
+      ...geoPatch,
     };
-    const existingId = byMondayId.get(item.id);
-    if (existingId) {
-      await db.property.update({ where: { id: existingId }, data });
+    if (existingRow) {
+      await db.property.update({ where: { id: existingRow.id }, data });
       updated++;
     } else {
       await db.property.create({
