@@ -275,18 +275,28 @@ function pushPage(
  * Best-effort guess: scan column titles for keywords and pre-fill the
  * mapping. The user can override anything — this just gives them a head
  * start so a board with conventional column names "just works".
+ *
+ * Monday location columns (`type: "location"`) always win the address slot
+ * when present — they hold the full formatted address as `text`, which is
+ * exactly what Geocoding needs.
  */
 export function autoMatchColumns(columns: MondayColumn[]): ColumnMapping {
   const mapping: ColumnMapping = {};
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-  // Order matters: the more-specific matches go first so "PM Email" beats
-  // a generic "Email" later in the list.
+  // 1. Monday "location" column type wins for address, unconditionally.
+  const locationCol = columns.find((c) => c.type === "location");
+  if (locationCol) {
+    mapping.address = locationCol.id;
+  }
+
+  // 2. Title-based matching fills the rest. Order matters: more-specific
+  //    matches go first so "PM Email" beats a generic "Email" later.
   const rules: { field: PropertyField; needles: string[] }[] = [
     { field: "pmEmail", needles: ["pmemail", "manageremail", "contactemail"] },
     { field: "pmPhone", needles: ["pmphone", "managerphone", "contactphone"] },
     { field: "pmName", needles: ["pmname", "propertymanager", "manager", "contactname"] },
-    { field: "address", needles: ["streetaddress", "address", "street"] },
+    { field: "address", needles: ["location", "streetaddress", "address", "street"] },
     { field: "city", needles: ["city"] },
     { field: "state", needles: ["state", "province"] },
     { field: "zip", needles: ["zip", "postal"] },
