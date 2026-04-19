@@ -305,10 +305,10 @@ function PropertyCard({ property: p }: { property: PropertyListItem }) {
               </CardDescription>
             )}
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <div className="flex min-w-0 max-w-[45%] shrink-0 flex-col items-end gap-1.5">
             {latest && <AuditStatusBadge status={latest.status} />}
             {p.mondayItemId && (
-              <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-600">
+              <span className="max-w-full truncate rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-600">
                 Monday
               </span>
             )}
