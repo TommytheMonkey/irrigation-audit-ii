@@ -133,6 +133,7 @@ model Org {
   users                User[]
   properties           Property[]
   audits               Audit[]
+  propertySystems      PropertySystem[]
   componentTypes       ComponentType[]
   quickPickFindings    QuickPickFinding[]
   severityLevels       SeverityLevel[]
@@ -207,10 +208,145 @@ model Property {
 
   org                  Org       @relation(fields: [orgId], references: [id], onDelete: Cascade)
   audits               Audit[]
+  systems              PropertySystem[]
 
   @@unique([orgId, mondayItemId])
   @@index([orgId])
   @@map("properties")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Irrigation system profile — what the property IS (separate from audits,
+// which are point-in-time inspections). A property has 1..N systems; each
+// system has its own controllers, water sources, zones, backflow, and parts.
+// See the app's system profile UI on /properties/[id].
+// ─────────────────────────────────────────────────────────────────────────────
+
+model PropertySystem {
+  id         String   @id @default(cuid())
+  propertyId String   @map("property_id")
+  orgId      String   @map("org_id")
+  name       String
+  sortOrder  Int      @default(0) @map("sort_order")
+
+  // On-site contact — the person at the property who knows the system well.
+  // Separate from property_manager_* on Property, which is typically the
+  // management company / client-side PM.
+  onSiteContactName  String? @map("on_site_contact_name")
+  onSiteContactEmail String? @map("on_site_contact_email")
+  onSiteContactPhone String? @map("on_site_contact_phone")
+  onSiteContactRole  String? @map("on_site_contact_role")
+
+  // Backflow / RPZ. Type is freeform enough to cover the variation in the
+  // field (RPZ, DCV, PVB, none, etc.) so we keep it a string rather than an enum.
+  backflowType         String?   @map("backflow_type")
+  backflowSize         String?   @map("backflow_size")
+  backflowLastTestedAt DateTime? @map("backflow_last_tested_at")
+  backflowStatus       String?   @map("backflow_status")
+  backflowNotes        String?   @map("backflow_notes")
+
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  property     Property              @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  org          Org                   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  controllers  PropertyController[]
+  waterSources PropertyWaterSource[]
+  zones        PropertyZone[]
+  parts        PropertyPart[]
+
+  @@index([propertyId])
+  @@index([orgId])
+  @@map("property_systems")
+}
+
+model PropertyController {
+  id                String      @id @default(cuid())
+  systemId          String      @map("system_id")
+  name              String?
+  brand             String?
+  model             String?
+  stationCount      Int?        @map("station_count")
+  location          String?
+  wiringType        WiringType? @map("wiring_type")
+  rainSensorPresent Boolean?    @map("rain_sensor_present")
+  notes             String?
+  sortOrder         Int         @default(0) @map("sort_order")
+  createdAt         DateTime    @default(now()) @map("created_at")
+
+  system PropertySystem @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  @@index([systemId])
+  @@map("property_controllers")
+}
+
+// Freeform source_type — expected values: city_meter, well, cistern, pond,
+// fire_hydrant, reclaimed, other. Permanent=false captures temp setups like
+// "tapped off a fire hydrant until the meter's installed."
+model PropertyWaterSource {
+  id         String   @id @default(cuid())
+  systemId   String   @map("system_id")
+  sourceType String   @map("source_type")
+  label      String?
+  gpm        Decimal? @db.Decimal(8, 2)
+  psi        Decimal? @db.Decimal(6, 2)
+  permanent  Boolean  @default(true)
+  notes      String?
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  system PropertySystem @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  @@index([systemId])
+  @@map("property_water_sources")
+}
+
+model PropertyZone {
+  id               String   @id @default(cuid())
+  systemId         String   @map("system_id")
+  zoneNumber       Int      @map("zone_number")
+  zoneName         String?  @map("zone_name")
+  zoneType         ZoneType @default(spray) @map("zone_type")
+  valveBrand       String?  @map("valve_brand")
+  valveModel       String?  @map("valve_model")
+  valveSize        String?  @map("valve_size")
+  ballValvePresent Boolean? @map("ball_valve_present")
+  headCount        Int?     @map("head_count")
+  coverage         String?
+  notes            String?
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  system PropertySystem @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  @@unique([systemId, zoneNumber])
+  @@index([systemId])
+  @@map("property_zones")
+}
+
+// Parts catalog for a system. Populated manually at first; Phase 2 (Excel
+// upload) and Phase 3 (drawings upload) will parse and insert via Claude.
+// catalogSource + catalogSymbol become the join key to the vendor CSVs
+// under parts-catalogs/ when we wire that up.
+model PropertyPart {
+  id            String   @id @default(cuid())
+  systemId      String   @map("system_id")
+  category      String?
+  brand         String?
+  model         String?
+  size          String?
+  quantity      Int?
+  catalogSource String?  @map("catalog_source")
+  catalogSymbol String?  @map("catalog_symbol")
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  system PropertySystem @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  @@index([systemId])
+  @@map("property_parts")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1,0 +1,126 @@
+SYMBOL,MANUFACTURER/MODEL
+,Hunter PROS-04 SR Series
+,Hunter PROS-04 Strip Series
+,Hunter PROS-04 5 Series
+,Hunter PROS-04 8 Series
+,Hunter PROS-04 Strip Series
+,Hunter PROS-04 10 Series
+,Hunter PROS-04 12 Series
+,Hunter PROS-04 15 Series
+,Hunter PROS-04 17 Series
+,Hunter PROS-04 Adj Series
+,Hunter PROS-04 Strip Series
+,Hunter MP Corner PROS-06-PRS40-CV 
+,Hunter MP Strip PROS-06-PRS40-CV 
+,Hunter MP1000 PROS-04-PRS40-CV 
+,Hunter MP2000 PROS-04-PRS40-CV 
+,Hunter MP3000 PROS-04-PRS40-CV 
+,Hunter MP3500 PROS-06-PRS40-CV 
+,Hunter MP800SR PROS-04-PRS40-CV 
+,Hunter MP815 PROS-06-PRS40-CV 
+,Hunter PCB 10
+SYMBOL,MANUFACTURER/MODEL
+,Hunter PGP-ADJ-B 1.5
+,Hunter PGP-ADJ-B 2.0
+,Hunter PGP-ADJ-B 2.5
+,Hunter PGP-ADJ-B 3.0
+,Hunter PGP-ADJ-B 4.0
+,Hunter PGP-ADJ-B 5.0
+,Hunter PGP-ADJ-B 6.0
+,Hunter PGP-ADJ-B 8.0
+,Hunter PGP-ADJ-LA 04
+,Hunter PGP-ADJ-LA 05
+,Hunter PGP-ADJ-LA 06
+,Hunter PGP-ADJ-LA 07
+,Hunter PGP-ADJ-LA 08
+,Hunter PGP-ADJ-LA 09
+,Hunter PGP-ADJ-LA 10
+SYMBOL,MANUFACTURER/MODEL
+,"Hunter PCZ-101-40 1"""
+,Hunter PLD-BV FLUSH VALVE 
+,"Hunter PLD-AVR AIR RELIEF VALVE 3/4"""
+,Hunter HDL-06-18-CV DRIP RING 
+,Hunter HDL-06-12-CV (TURF) 
+,Hunter HDL-06-18-CV (BED) 
+SYMBOL,MANUFACTURER/MODEL
+,"Hunter PGV-101G 1"""
+,"Hunter PGV-151 Globe 1-1/2"""
+,"Hunter PGV-201 Globe 2"""
+,"Hunter HQ-44RC 1"""
+,"Nibco T-113 3"" "
+,"Hunter ICV-G MASTER VALVE 1"""
+,"Hunter ICV-G MASTER VALVE 1-1/2"""
+,"Hunter ICV-G MASTER VALVE 2"""
+,"Hunter ICV-G MASTER VALVE 3"""
+,"Febco 825Y 1"""
+,"Febco 825Y 1-1/2"""
+,"Febco 825Y 1-1/4"""
+,"Febco 825Y 2"""
+,"Febco 825Y 3/4"""
+,"Febco 850 2"""
+,Hunter I2C-0800-M CONTROLLER 
+,Hunter I2C-2400-M CONTROLLER 
+,Hunter I2C-5400-M CONTROLLER 
+,Hunter DUAL48M TWO WIRE CONTROLLER 
+,Hunter EZ-1 DECODER 
+,Hunter EZDM 
+,Hunter RAIN-CLIK 
+,Hunter Solar-Sync 
+,DATA INDUSTRIAL-IR220-P FLOW SENSOR 
+,Cap for future use 
+,wye strainer 
+,"Water Meter 2"" "
+,Irrigation Lateral Line: PVC Class 200 SDR 21 
+,"Irrigation Lateral Line: PVC Class 200 SDR 21 1/2"""
+,"Irrigation Lateral Line: PVC Class 200 SDR 21 3/4"""
+,"Irrigation Lateral Line: PVC Class 200 SDR 21 1"""
+,"Irrigation Lateral Line: PVC Class 200 SDR 21 1 1/4"""
+,"Irrigation Lateral Line: PVC Class 200 SDR 21 1 1/2"""
+,"Irrigation Lateral Line: PVC Class 200 SDR 21 2"""
+,"Irrigation Lateral Line: PVC Class 200 SDR 21 2 1/2"""
+,"Irrigation Lateral Line: PVC Class 200 SDR 21 3"""
+,"Irrigation Lateral Line: PVC Class 200 SDR 21 4"""
+,"Irrigation Lateral Line: PVC Class 200 SDR 21 5"""
+,"Irrigation Lateral Line: PVC Class 200 SDR 21 6"""
+,"Irrigation Lateral Line: PVC Class 200 SDR 21 8"""
+,"Irrigation Lateral Line: PVC Class 200 SDR 21 10"""
+,"Irrigation Lateral Line: PVC Class 200 SDR 21 12"""
+,"Irrigation Lateral Line: PVC Class 200 SDR 21 14"""
+,"Irrigation Lateral Line: PVC Class 200 SDR 21 16"""
+,"Irrigation Lateral Line: PVC Class 200 SDR 21 18"""
+,Irrigation Mainline: PVC Class 200 SDR 21 
+,"Irrigation Mainline: PVC Class 200 SDR 21 1/2"""
+,"Irrigation Mainline: PVC Class 200 SDR 21 3/4"""
+,"Irrigation Mainline: PVC Class 200 SDR 21 1"""
+,"Irrigation Mainline: PVC Class 200 SDR 21 1 1/4"""
+,"Irrigation Mainline: PVC Class 200 SDR 21 1 1/2"""
+,"Irrigation Mainline: PVC Class 200 SDR 21 2"""
+,"Irrigation Mainline: PVC Class 200 SDR 21 2 1/2"""
+,"Irrigation Mainline: PVC Class 200 SDR 21 3"""
+,"Irrigation Mainline: PVC Class 200 SDR 21 4"""
+,"Irrigation Mainline: PVC Class 200 SDR 21 5"""
+,"Irrigation Mainline: PVC Class 200 SDR 21 6"""
+,"Irrigation Mainline: PVC Class 200 SDR 21 8"""
+,"Irrigation Mainline: PVC Class 200 SDR 21 10"""
+,"Irrigation Mainline: PVC Class 200 SDR 21 12"""
+,"Irrigation Mainline: PVC Class 200 SDR 21 14"""
+,"Irrigation Mainline: PVC Class 200 SDR 21 16"""
+,"Irrigation Mainline: PVC Class 200 SDR 21 18"""
+,Pipe Sleeve: PVC Class 200 SDR 21 
+,"Pipe Sleeve: PVC Class 200 SDR 21 1/2"""
+,"Pipe Sleeve: PVC Class 200 SDR 21 3/4"""
+,"Pipe Sleeve: PVC Class 200 SDR 21 1"""
+,"Pipe Sleeve: PVC Class 200 SDR 21 1 1/4"""
+,"Pipe Sleeve: PVC Class 200 SDR 21 1 1/2"""
+,"Pipe Sleeve: PVC Class 200 SDR 21 2"""
+,"Pipe Sleeve: PVC Class 200 SDR 21 2 1/2"""
+,"Pipe Sleeve: PVC Class 200 SDR 21 3"""
+,"Pipe Sleeve: PVC Class 200 SDR 21 4"""
+,"Pipe Sleeve: PVC Class 200 SDR 21 5"""
+,"Pipe Sleeve: PVC Class 200 SDR 21 6"""
+,"Pipe Sleeve: PVC Class 200 SDR 21 8"""
+,"Pipe Sleeve: PVC Class 200 SDR 21 10"""
+,"Pipe Sleeve: PVC Class 200 SDR 21 12"""
+,"Pipe Sleeve: PVC Class 200 SDR 21 14"""
+,"Pipe Sleeve: PVC Class 200 SDR 21 16"""
+,"Pipe Sleeve: PVC Class 200 SDR 21 18"""
