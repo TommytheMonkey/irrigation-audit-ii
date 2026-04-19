@@ -6,19 +6,23 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
-  CardFooter,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AppHeader } from "@/components/app-header";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
+import { createAudit, type AuditSource } from "@/lib/audit-create";
 
 export const dynamic = "force-dynamic";
 
-// Step 1 of the new-audit flow: confirm property + (optionally) copy zones
-// from a previous audit. Submitting hits the server action below which
-// creates the audit row and redirects to the audit hub.
+// Step 1 of the new-audit flow. Confirms the property, then lets the user
+// pick a starting point:
+//   - From scratch (empty audit)
+//   - Copy from last audit (if there is one with zones)
+//   - From system profile (if any PropertySystem exists)
+// The radio group defaults to "profile" when available, then "last audit",
+// else "blank".
 export default async function NewAuditPage({
   searchParams,
 }: {
@@ -42,91 +46,47 @@ export default async function NewAuditPage({
           _count: { select: { zones: true } },
         },
       },
+      _count: { select: { systems: true } },
+      systems: {
+        orderBy: { sortOrder: "asc" },
+        select: { _count: { select: { zones: true } } },
+      },
     },
   });
   if (!property) notFound();
 
   const lastAudit = property.audits[0];
   const hasCopyableZones = (lastAudit?._count.zones ?? 0) > 0;
+  const hasProfile = property._count.systems > 0;
+  const profileZoneCount = property.systems.reduce(
+    (n, s) => n + s._count.zones,
+    0,
+  );
+  const defaultSource = hasProfile
+    ? "profile"
+    : hasCopyableZones
+      ? "last_audit"
+      : "blank";
 
   async function startAudit(formData: FormData) {
     "use server";
     const u = await requireAuth();
-    const copyFrom = formData.get("copyFromAuditId") as string | null;
+    const sourceKind = (formData.get("source") as string) ?? "blank";
 
-    // Inline the same logic as POST /api/audits to skip a network hop.
-    const source = copyFrom
-      ? await db.audit.findFirst({
-          where: { id: copyFrom, orgId: u.orgId },
-          select: {
-            systems: {
-              orderBy: { createdAt: "asc" },
-              select: {
-                systemNumber: true,
-                systemName: true,
-                controllerBrand: true,
-                controllerModel: true,
-                controllerLocation: true,
-                wiringType: true,
-                waterSourceType: true,
-                zones: {
-                  orderBy: { zoneNumber: "asc" },
-                  select: {
-                    zoneNumber: true,
-                    zoneName: true,
-                    zoneType: true,
-                    zoneSize: true,
-                  },
-                },
-              },
-            },
-          },
-        })
-      : null;
+    let source: AuditSource;
+    if (sourceKind === "profile") {
+      source = { type: "profile" };
+    } else if (sourceKind === "last_audit" && lastAudit) {
+      source = { type: "previous_audit", auditId: lastAudit.id };
+    } else {
+      source = { type: "blank" };
+    }
 
-    const audit = await db.$transaction(async (tx) => {
-      const a = await tx.audit.create({
-        data: {
-          orgId: u.orgId,
-          propertyId: propertyId!,
-          auditorUserId: u.id,
-        },
-        select: { id: true },
-      });
-      if (source && source.systems.length > 0) {
-        for (const s of source.systems) {
-          const sys = await tx.auditSystem.create({
-            data: {
-              auditId: a.id,
-              systemNumber: s.systemNumber,
-              systemName: s.systemName,
-              controllerBrand: s.controllerBrand,
-              controllerModel: s.controllerModel,
-              controllerLocation: s.controllerLocation,
-              wiringType: s.wiringType,
-              waterSourceType: s.waterSourceType,
-            },
-            select: { id: true },
-          });
-          if (s.zones.length > 0) {
-            await tx.auditZone.createMany({
-              data: s.zones.map((z) => ({
-                auditId: a.id,
-                systemId: sys.id,
-                zoneNumber: z.zoneNumber,
-                zoneName: z.zoneName,
-                zoneType: z.zoneType,
-                zoneSize: z.zoneSize,
-              })),
-            });
-          }
-        }
-      } else {
-        await tx.auditSystem.create({
-          data: { auditId: a.id, systemNumber: "1" },
-        });
-      }
-      return a;
+    const audit = await createAudit({
+      orgId: u.orgId,
+      propertyId: propertyId!,
+      auditorUserId: u.id,
+      source,
     });
 
     redirect(`/audits/${audit.id}`);
@@ -149,7 +109,7 @@ export default async function NewAuditPage({
           New audit
         </h1>
         <p className="mb-6 text-sm text-muted-foreground">
-          Confirm the property details and start the inspection.
+          Confirm the property and pick a starting point.
         </p>
 
         <Card className="mb-4">
@@ -182,32 +142,43 @@ export default async function NewAuditPage({
         </Card>
 
         <form action={startAudit}>
-          {hasCopyableZones && lastAudit && (
-            <Card className="mb-4">
-              <CardHeader>
-                <CardTitle className="text-base">Copy from last audit?</CardTitle>
-                <CardDescription>
-                  Last audited {formatDate(lastAudit.startedAt)} ·{" "}
-                  {lastAudit._count.zones}{" "}
-                  {lastAudit._count.zones === 1 ? "zone" : "zones"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <label className="flex items-center gap-3 text-sm">
-                  <input
-                    type="checkbox"
-                    name="copyFromAuditId"
-                    value={lastAudit.id}
-                    className="h-5 w-5 rounded border-zinc-300"
-                    defaultChecked
-                  />
-                  <span>
-                    Copy systems &amp; zones (skip re-entering the layout)
-                  </span>
-                </label>
-              </CardContent>
-            </Card>
-          )}
+          <Card className="mb-4">
+            <CardHeader>
+              <CardTitle className="text-base">Starting point</CardTitle>
+              <CardDescription>
+                Pre-populate systems and zones so you&apos;re not re-entering
+                the layout from scratch.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {hasProfile && (
+                <SourceOption
+                  name="source"
+                  value="profile"
+                  defaultChecked={defaultSource === "profile"}
+                  title="From system profile"
+                  subtitle={`${property._count.systems} ${property._count.systems === 1 ? "system" : "systems"} · ${profileZoneCount} ${profileZoneCount === 1 ? "zone" : "zones"} already documented`}
+                  recommended
+                />
+              )}
+              {hasCopyableZones && lastAudit && (
+                <SourceOption
+                  name="source"
+                  value="last_audit"
+                  defaultChecked={defaultSource === "last_audit"}
+                  title="Copy from last audit"
+                  subtitle={`Last audited ${formatDate(lastAudit.startedAt)} · ${lastAudit._count.zones} ${lastAudit._count.zones === 1 ? "zone" : "zones"}`}
+                />
+              )}
+              <SourceOption
+                name="source"
+                value="blank"
+                defaultChecked={defaultSource === "blank"}
+                title="Start blank"
+                subtitle="Single system, no zones. Add them as you go."
+              />
+            </CardContent>
+          </Card>
 
           <div className="flex gap-3">
             <Button
@@ -221,5 +192,44 @@ export default async function NewAuditPage({
         </form>
       </main>
     </>
+  );
+}
+
+function SourceOption({
+  name,
+  value,
+  defaultChecked,
+  title,
+  subtitle,
+  recommended,
+}: {
+  name: string;
+  value: string;
+  defaultChecked: boolean;
+  title: string;
+  subtitle: string;
+  recommended?: boolean;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-3 rounded-md border border-zinc-200 p-3 transition-colors hover:bg-zinc-50 has-[:checked]:border-primary has-[:checked]:bg-primary/5 dark:border-zinc-800 dark:hover:bg-zinc-900/40">
+      <input
+        type="radio"
+        name={name}
+        value={value}
+        defaultChecked={defaultChecked}
+        className="mt-0.5 h-4 w-4"
+      />
+      <div className="flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">{title}</span>
+          {recommended && (
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+              Recommended
+            </span>
+          )}
+        </div>
+        <div className="mt-0.5 text-xs text-muted-foreground">{subtitle}</div>
+      </div>
+    </label>
   );
 }
