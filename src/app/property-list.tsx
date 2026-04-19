@@ -15,6 +15,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatRelative } from "@/lib/format";
 import { PropertyMap } from "@/components/property-map";
+import {
+  Search,
+  LayoutGrid,
+  Map,
+  ChevronRight,
+  Calendar,
+  User,
+  ClipboardList,
+  Plus,
+} from "lucide-react";
 
 type AuditLite = {
   id: string;
@@ -56,7 +66,6 @@ export function PropertyList({ properties }: { properties: PropertyListItem[] })
   const [statusFilter, setStatusFilter] = useState<AuditStatusFilter>("all");
   const [syncFilter, setSyncFilter] = useState<SyncFilter>("all");
 
-  // Distinct PM names, sorted alphabetically — drives the PM dropdown.
   const pmOptions = useMemo(() => {
     const set = new Set<string>();
     for (const p of properties) {
@@ -111,78 +120,71 @@ export function PropertyList({ properties }: { properties: PropertyListItem[] })
 
   return (
     <>
-      {/* View toggle */}
-      <div className="mb-3 flex items-center gap-2">
-        <ViewToggle value={view} onChange={setView} />
-        <span className="ml-auto text-xs text-muted-foreground">
-          {filtered.length} of {properties.length}
-        </span>
-      </div>
+      {/* Search and controls */}
+      <div className="mb-6 space-y-4">
+        {/* Search bar */}
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search properties..."
+            className="h-12 rounded-xl bg-card pl-11 text-base shadow-sm transition-shadow focus-visible:shadow-md"
+            aria-label="Search properties"
+          />
+        </div>
 
-      {/* Search + sort + filters */}
-      <div className="mb-4 flex flex-col gap-2">
-        <Input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by name, address, or PM…"
-          className="h-11"
-          aria-label="Search properties"
-        />
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <LabeledSelect
-            label="Sort"
-            value={sort}
-            onChange={(v) => setSort(v as SortMode)}
-          >
-            <option value="name">Name (A–Z)</option>
-            <option value="last_audit">Last audit (recent)</option>
-            <option value="total_audits">Total audits</option>
-          </LabeledSelect>
+        {/* Controls row */}
+        <div className="flex flex-wrap items-center gap-3">
+          <ViewToggle value={view} onChange={setView} />
 
-          <LabeledSelect
-            label="PM"
-            value={pmFilter}
-            onChange={(v) => setPmFilter(v)}
-          >
-            <option value="all">All PMs</option>
-            {pmOptions.map((pm) => (
-              <option key={pm} value={pm}>
-                {pm}
-              </option>
-            ))}
-          </LabeledSelect>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <FilterSelect
+              value={sort}
+              onChange={(v) => setSort(v as SortMode)}
+              options={[
+                { value: "name", label: "Name" },
+                { value: "last_audit", label: "Recent" },
+                { value: "total_audits", label: "Most audits" },
+              ]}
+            />
 
-          <LabeledSelect
-            label="Last audit"
-            value={statusFilter}
-            onChange={(v) => setStatusFilter(v as AuditStatusFilter)}
-          >
-            <option value="all">Any status</option>
-            <option value="none">Never audited</option>
-            {AUDIT_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {labelForStatus(s)}
-              </option>
-            ))}
-          </LabeledSelect>
+            {pmOptions.length > 0 && (
+              <FilterSelect
+                value={pmFilter}
+                onChange={setPmFilter}
+                options={[
+                  { value: "all", label: "All PMs" },
+                  ...pmOptions.map((pm) => ({ value: pm, label: pm })),
+                ]}
+              />
+            )}
 
-          <LabeledSelect
-            label="Source"
-            value={syncFilter}
-            onChange={(v) => setSyncFilter(v as SyncFilter)}
-          >
-            <option value="all">All sources</option>
-            <option value="monday">Monday only</option>
-            <option value="manual">Manual only</option>
-          </LabeledSelect>
+            <FilterSelect
+              value={statusFilter}
+              onChange={(v) => setStatusFilter(v as AuditStatusFilter)}
+              options={[
+                { value: "all", label: "Any status" },
+                { value: "none", label: "Never audited" },
+                ...AUDIT_STATUSES.map((s) => ({
+                  value: s,
+                  label: labelForStatus(s),
+                })),
+              ]}
+            />
+          </div>
+
+          <span className="text-sm text-muted-foreground">
+            {filtered.length} of {properties.length}
+          </span>
         </div>
       </div>
 
       {filtered.length === 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>No matches</CardTitle>
+        <Card className="border-dashed">
+          <CardHeader className="py-12 text-center">
+            <CardTitle className="text-lg">No matches</CardTitle>
             <CardDescription>
               {filtersActive
                 ? "Try loosening your filters."
@@ -191,9 +193,11 @@ export function PropertyList({ properties }: { properties: PropertyListItem[] })
           </CardHeader>
         </Card>
       ) : view === "map" ? (
-        <PropertyMap properties={filtered} />
+        <div className="overflow-hidden rounded-2xl border border-border shadow-sm">
+          <PropertyMap properties={filtered} />
+        </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map((p) => (
             <PropertyCard key={p.id} property={p} />
           ))}
@@ -214,14 +218,20 @@ function ViewToggle({
     <div
       role="tablist"
       aria-label="View mode"
-      className="inline-flex overflow-hidden rounded-md border border-zinc-200 dark:border-zinc-800"
+      className="inline-flex overflow-hidden rounded-lg border border-border bg-card p-1"
     >
-      <ToggleButton active={value === "list"} onClick={() => onChange("list")}>
-        List
-      </ToggleButton>
-      <ToggleButton active={value === "map"} onClick={() => onChange("map")}>
-        Map
-      </ToggleButton>
+      <ToggleButton
+        active={value === "list"}
+        onClick={() => onChange("list")}
+        icon={<LayoutGrid className="h-4 w-4" />}
+        label="Grid"
+      />
+      <ToggleButton
+        active={value === "map"}
+        onClick={() => onChange("map")}
+        icon={<Map className="h-4 w-4" />}
+        label="Map"
+      />
     </div>
   );
 }
@@ -229,11 +239,13 @@ function ViewToggle({
 function ToggleButton({
   active,
   onClick,
-  children,
+  icon,
+  label,
 }: {
   active: boolean;
   onClick: () => void;
-  children: React.ReactNode;
+  icon: React.ReactNode;
+  label: string;
 }) {
   return (
     <button
@@ -241,118 +253,152 @@ function ToggleButton({
       role="tab"
       aria-selected={active}
       onClick={onClick}
-      className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+      className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
         active
-          ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-50 dark:text-zinc-900"
-          : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          ? "bg-primary text-primary-foreground shadow-sm"
+          : "text-muted-foreground hover:bg-muted hover:text-foreground"
       }`}
     >
-      {children}
+      {icon}
+      <span className="hidden sm:inline">{label}</span>
     </button>
   );
 }
 
-function LabeledSelect({
-  label,
+function FilterSelect({
   value,
   onChange,
-  children,
+  options,
 }: {
-  label: string;
   value: string;
   onChange: (v: string) => void;
-  children: React.ReactNode;
+  options: { value: string; label: string }[];
 }) {
   return (
-    <label className="flex flex-col gap-0.5 text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-      >
-        {children}
-      </select>
-    </label>
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-9 rounded-lg border border-border bg-card px-3 text-sm text-foreground transition-colors hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary/20"
+    >
+      {options.map((opt) => (
+        <option key={opt.value} value={opt.value}>
+          {opt.label}
+        </option>
+      ))}
+    </select>
   );
 }
 
 function PropertyCard({ property: p }: { property: PropertyListItem }) {
   const latest = p.audits[0];
   return (
-    <Card className="flex flex-col">
-      <CardHeader>
-        <div className="flex items-start justify-between gap-2">
+    <Card className="group flex flex-col overflow-hidden transition-all hover:shadow-lg">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <CardTitle className="truncate text-base sm:text-lg">
+            <CardTitle className="truncate text-lg font-semibold">
               {p.name}
             </CardTitle>
             {p.address && (
-              <CardDescription className="mt-0.5 truncate">
+              <CardDescription className="mt-1 truncate text-sm">
                 {p.address}
               </CardDescription>
             )}
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1">
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
             {latest && <AuditStatusBadge status={latest.status} />}
             {p.mondayItemId && (
-              <span
-                className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-blue-800 dark:bg-blue-950/40 dark:text-blue-300"
-                title="Synced from Monday.com"
-              >
+              <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-600">
                 Monday
               </span>
             )}
           </div>
         </div>
       </CardHeader>
-      <CardContent className="flex-1">
-        <dl className="grid grid-cols-2 gap-y-1 text-xs sm:text-sm">
-          <dt className="text-muted-foreground">PM</dt>
-          <dd className="truncate text-right">
-            {p.propertyManagerName ?? "—"}
-          </dd>
-          <dt className="text-muted-foreground">Last audit</dt>
-          <dd className="truncate text-right">
-            {latest ? formatRelative(latest.startedAt) : "Never"}
-          </dd>
-          <dt className="text-muted-foreground">Total audits</dt>
-          <dd className="truncate text-right tabular-nums">
-            {p._count.audits}
-          </dd>
-        </dl>
+
+      <CardContent className="flex-1 pb-4">
+        <div className="space-y-2">
+          <DataRow
+            icon={<User className="h-3.5 w-3.5" />}
+            label="PM"
+            value={p.propertyManagerName ?? "Not assigned"}
+          />
+          <DataRow
+            icon={<Calendar className="h-3.5 w-3.5" />}
+            label="Last audit"
+            value={latest ? formatRelative(latest.startedAt) : "Never"}
+          />
+          <DataRow
+            icon={<ClipboardList className="h-3.5 w-3.5" />}
+            label="Total audits"
+            value={p._count.audits.toString()}
+          />
+        </div>
       </CardContent>
-      <CardFooter className="flex gap-2">
+
+      <CardFooter className="gap-2 border-t border-border bg-muted/30 pt-4">
         <Button
           variant="outline"
           size="lg"
-          className="h-11 flex-1"
+          className="h-10 flex-1 rounded-lg font-medium"
           render={<Link href={`/properties/${p.id}`} />}
         >
           View
+          <ChevronRight className="ml-1 h-4 w-4" />
         </Button>
         <Button
           size="lg"
-          className="h-11 flex-1"
+          className="h-10 flex-1 gap-1.5 rounded-lg font-medium shadow-sm transition-all hover:shadow-md"
           render={<Link href={`/audits/new?propertyId=${p.id}`} />}
         >
-          Start Audit
+          <Plus className="h-4 w-4" />
+          Audit
         </Button>
       </CardFooter>
     </Card>
   );
 }
 
+function DataRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className="flex items-center gap-2 text-muted-foreground">
+        {icon}
+        {label}
+      </span>
+      <span className="font-medium text-foreground">{value}</span>
+    </div>
+  );
+}
+
 function AuditStatusBadge({ status }: { status: string }) {
   const cfg = statusConfig(status);
-  return <Badge variant={cfg.variant}>{cfg.label}</Badge>;
+  return (
+    <Badge
+      variant={cfg.variant}
+      className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+    >
+      {cfg.label}
+    </Badge>
+  );
 }
 
 function statusConfig(status: string): {
   label: string;
   variant: "default" | "secondary" | "destructive" | "outline";
 } {
-  const map: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+  const map: Record<
+    string,
+    { label: string; variant: "default" | "secondary" | "destructive" | "outline" }
+  > = {
     in_progress: { label: "In progress", variant: "default" },
     completed: { label: "Completed", variant: "secondary" },
     exported: { label: "Exported", variant: "secondary" },

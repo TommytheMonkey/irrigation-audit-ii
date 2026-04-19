@@ -10,10 +10,6 @@ import { ConfigTab } from "./config-tab";
 
 export const dynamic = "force-dynamic";
 
-// Org settings — tab dispatcher driven by ?tab=. Each tab is a small client
-// island that calls the corresponding /api/settings/* route. Non-admin users
-// can read everything but the forms are disabled (and the server enforces
-// admin-only on the actual mutations).
 export default async function SettingsPage({
   searchParams,
 }: {
@@ -27,40 +23,57 @@ export default async function SettingsPage({
   return (
     <>
       <AppHeader />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6">
-        <div className="mb-5">
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
+        {/* Page header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">
             Settings
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Org-level configuration.
+          <p className="mt-1 text-muted-foreground">
+            Manage your organization&apos;s configuration
           </p>
         </div>
 
         <SettingsTabs current={tab} />
 
-        {tab === "company" && <CompanyTabPanel orgId={user.orgId} canEdit={canEdit} />}
-        {tab === "integrations" && (
-          <IntegrationsTabPanel orgId={user.orgId} canEdit={canEdit} />
-        )}
-        {tab === "users" && <UsersTabPanel orgId={user.orgId} currentUserId={user.id} canEdit={canEdit} />}
-        {tab === "config" && <ConfigTabPanel orgId={user.orgId} />}
+        <div className="mt-6">
+          {tab === "company" && (
+            <CompanyTabPanel orgId={user.orgId} canEdit={canEdit} />
+          )}
+          {tab === "integrations" && (
+            <IntegrationsTabPanel orgId={user.orgId} canEdit={canEdit} />
+          )}
+          {tab === "users" && (
+            <UsersTabPanel
+              orgId={user.orgId}
+              currentUserId={user.id}
+              canEdit={canEdit}
+            />
+          )}
+          {tab === "config" && <ConfigTabPanel orgId={user.orgId} />}
+        </div>
       </main>
     </>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Per-tab data fetchers. Kept inline so the page is one file to read; each
-// tab only loads what its panel needs (no over-fetching).
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function CompanyTabPanel({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
+async function CompanyTabPanel({
+  orgId,
+  canEdit,
+}: {
+  orgId: string;
+  canEdit: boolean;
+}) {
   const org = await db.org.findUniqueOrThrow({
     where: { id: orgId },
     select: { name: true, emailDomain: true },
   });
-  return <CompanyTab initial={{ name: org.name, emailDomain: org.emailDomain }} canEdit={canEdit} />;
+  return (
+    <CompanyTab
+      initial={{ name: org.name, emailDomain: org.emailDomain }}
+      canEdit={canEdit}
+    />
+  );
 }
 
 async function IntegrationsTabPanel({
@@ -132,7 +145,13 @@ async function UsersTabPanel({
       createdAt: true,
     },
   });
-  return <UsersTab initialUsers={users} currentUserId={currentUserId} canEdit={canEdit} />;
+  return (
+    <UsersTab
+      initialUsers={users}
+      currentUserId={currentUserId}
+      canEdit={canEdit}
+    />
+  );
 }
 
 async function ConfigTabPanel({ orgId }: { orgId: string }) {

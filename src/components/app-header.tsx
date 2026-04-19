@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { SignOutButton } from "./sign-out-button";
@@ -20,41 +21,40 @@ export async function AppHeader() {
         .slice(0, 2)
         .toUpperCase()
     : user.email.slice(0, 2).toUpperCase();
-  const swatch = org.brandColorPrimary ?? "#1e6f3a";
 
   return (
-    <header className="sticky top-0 z-20 border-b border-zinc-200 bg-white/80 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/80">
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-2">
-          {org.primaryLogoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={org.primaryLogoUrl}
-              alt={`${user.org.name} logo`}
-              className="h-7 w-7 rounded-md object-contain"
-            />
-          ) : (
-            <div
-              className="h-7 w-7 rounded-md"
-              style={{ backgroundColor: swatch }}
-              aria-hidden
-            />
-          )}
-          <span className="text-base font-semibold tracking-tight sm:text-lg">
-            {user.org.name}
-          </span>
+    <header className="sticky top-0 z-20 border-b border-border/40 bg-background/80 backdrop-blur-xl backdrop-saturate-150">
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:h-16 sm:px-6">
+        <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
+          <Image
+            src="/takeo-icon.jpg"
+            alt="Takeo"
+            width={36}
+            height={36}
+            className="rounded-lg"
+            priority
+          />
+          <div className="flex flex-col">
+            <span className="text-sm font-semibold tracking-tight text-foreground sm:text-base">
+              Irrigation Audit
+            </span>
+            <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+              by Takeo
+            </span>
+          </div>
         </Link>
-        <div className="flex items-center gap-3">
+        
+        <nav className="flex items-center gap-4 sm:gap-6">
           <SignOutButton />
           <Link
             href="/settings"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-200 text-sm font-semibold text-zinc-700 transition-colors hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+            className="group relative flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground transition-all hover:scale-105 hover:shadow-lg active:scale-95 sm:h-10 sm:w-10"
             title={user.name ?? user.email}
             aria-label="Settings"
           >
             {initials}
           </Link>
-        </div>
+        </nav>
       </div>
     </header>
   );

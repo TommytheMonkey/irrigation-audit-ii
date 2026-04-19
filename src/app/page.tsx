@@ -10,17 +10,13 @@ import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
 import { formatRelative } from "@/lib/format";
 import { PropertyList } from "./property-list";
+import { Building2, RefreshCw } from "lucide-react";
 
-// Server component — runs on every request, queries Neon directly via the
-// pg adapter. Mobile-first dashboard: property cards, tap to drill in.
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const user = await requireAuth();
 
-  // Pull properties + the org's Monday sync state in parallel. We exclude
-  // properties whose Monday item was removed since the last sync (still in
-  // the table for audit-history continuity, but shouldn't clutter the grid).
   const [properties, org] = await Promise.all([
     db.property.findMany({
       where: { orgId: user.orgId, syncStatus: { not: "removed" } },
@@ -46,7 +42,6 @@ export default async function Home() {
   ]);
 
   const mondayConfigured = org.mondayBoardId !== null;
-  // 7-day staleness threshold — beyond that we nudge the user to re-sync.
   const STALE_MS = 7 * 24 * 60 * 60 * 1000;
   const isStale =
     mondayConfigured &&
@@ -56,15 +51,16 @@ export default async function Home() {
   return (
     <>
       <AppHeader />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-10">
-        <div className="mb-6 flex items-center justify-between gap-4">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
+        {/* Page header */}
+        <div className="mb-8 flex items-end justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+            <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
               Properties
             </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 text-muted-foreground">
               {properties.length}{" "}
-              {properties.length === 1 ? "property" : "properties"}
+              {properties.length === 1 ? "property" : "properties"} in your portfolio
             </p>
           </div>
         </div>
@@ -89,16 +85,19 @@ export default async function Home() {
 
 function EmptyState() {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>No properties yet</CardTitle>
-        <CardDescription>
+    <Card className="border-dashed">
+      <CardHeader className="py-12 text-center">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+          <Building2 className="h-7 w-7 text-muted-foreground" />
+        </div>
+        <CardTitle className="text-xl">No properties yet</CardTitle>
+        <CardDescription className="mx-auto mt-2 max-w-sm">
           Connect Monday.com from{" "}
-          <Link href="/settings?tab=integrations" className="underline">
-            Settings → Integrations
+          <Link href="/settings?tab=integrations" className="font-medium text-primary hover:underline">
+            Settings
           </Link>{" "}
           to sync your board, or run{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+          <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs">
             npm run db:seed:demo
           </code>{" "}
           to load demo properties.
@@ -108,8 +107,6 @@ function EmptyState() {
   );
 }
 
-// Banner above the property grid that shows last-sync state. Stale (>7d) or
-// never-synced gets an amber tint to nudge the user; healthy is plain.
 function SyncBanner({
   syncedAt,
   isStale,
@@ -119,30 +116,34 @@ function SyncBanner({
   isStale: boolean;
   canSync: boolean;
 }) {
-  const tone = isStale
-    ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
-    : "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-300";
   return (
     <div
-      className={`mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-2.5 text-sm ${tone}`}
+      className={`mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 text-sm ${
+        isStale
+          ? "bg-accent/50 text-foreground"
+          : "bg-muted text-muted-foreground"
+      }`}
     >
-      <div>
-        {syncedAt ? (
-          <>
-            <span className="font-medium">Monday sync:</span>{" "}
-            {isStale ? "stale — " : ""}last synced {formatRelative(syncedAt)}
-          </>
-        ) : (
-          <>
-            <span className="font-medium">Monday connected</span> but no sync
-            has run yet.
-          </>
-        )}
+      <div className="flex items-center gap-2">
+        <RefreshCw className={`h-4 w-4 ${isStale ? "text-primary" : ""}`} />
+        <span>
+          {syncedAt ? (
+            <>
+              <span className="font-medium">Monday sync:</span>{" "}
+              {isStale ? "stale — " : ""}last synced {formatRelative(syncedAt)}
+            </>
+          ) : (
+            <>
+              <span className="font-medium">Monday connected</span> but no sync
+              has run yet.
+            </>
+          )}
+        </span>
       </div>
       {canSync && (
         <Link
           href="/settings?tab=integrations"
-          className="text-xs font-medium underline"
+          className="text-sm font-medium text-primary transition-colors hover:text-primary/80"
         >
           Sync now
         </Link>
@@ -150,4 +151,3 @@ function SyncBanner({
     </div>
   );
 }
-
