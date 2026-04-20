@@ -87,12 +87,17 @@ export function ReportWizard({
   }
 
   if (!open) {
+    // bg-accent = org secondary (dark green for Takeo).
+    // text-primary = org primary (yellow for Takeo).
+    // For orgs with different palettes this still picks their most
+    // prominent brand pair — a real CTA instead of a gray outline.
+    // self-start stops the flex parent from stretching it full-width.
     return (
       <Button
         type="button"
-        variant="outline"
-        size="sm"
+        size="lg"
         onClick={() => setOpen(true)}
+        className="h-11 self-start bg-accent px-5 font-semibold text-primary shadow-sm transition-opacity hover:bg-accent hover:opacity-90"
       >
         Generate report
       </Button>
