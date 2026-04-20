@@ -20,6 +20,24 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Irrigation Audit | Takeo",
   description: "Field-first irrigation audits for landscape teams",
+  icons: {
+    // Two variants wired via `prefers-color-scheme` media queries: the
+    // dark-green monkey reads on light browser chrome, the white monkey
+    // reads on dark chrome. Browsers pick the right one automatically.
+    // apple-icon.png stays filesystem-conventioned for iOS home screen.
+    icon: [
+      {
+        url: "/icon-light.png",
+        media: "(prefers-color-scheme: light)",
+        type: "image/png",
+      },
+      {
+        url: "/icon-dark.png",
+        media: "(prefers-color-scheme: dark)",
+        type: "image/png",
+      },
+    ],
+  },
 };
 
 export const viewport: Viewport = {
