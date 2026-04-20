@@ -141,9 +141,13 @@ function SyncBanner({
         </span>
       </div>
       {canSync && (
+        // Pill button using brand accent (Takeo secondary = dark green) so
+        // the label stays readable regardless of a light brand primary.
+        // bg-accent + text-accent-foreground auto-adapt to whatever each
+        // org's secondary brand color is.
         <Link
           href="/settings?tab=integrations"
-          className="text-sm font-medium text-primary transition-colors hover:text-primary/80"
+          className="rounded-full bg-accent px-3 py-1 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90"
         >
           Sync now
         </Link>
