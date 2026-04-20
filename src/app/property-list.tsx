@@ -292,9 +292,13 @@ function FilterSelect({
 function PropertyCard({ property: p }: { property: PropertyListItem }) {
   const latest = p.audits[0];
   return (
-    <Card className="group flex flex-col overflow-hidden transition-all hover:shadow-lg">
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-3">
+    // `min-w-0` on the Card itself is critical: CSS Grid items default to
+    // min-width:auto, which lets a long property name push the grid column
+    // wider than its share. With min-w-0 the card stays exactly in its
+    // column and the title's `truncate` can do its job.
+    <Card className="group flex min-w-0 flex-col overflow-hidden transition-all hover:shadow-lg">
+      <CardHeader className="min-w-0 pb-3">
+        <div className="flex min-w-0 items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <CardTitle className="truncate text-lg font-semibold">
               {p.name}
@@ -305,7 +309,7 @@ function PropertyCard({ property: p }: { property: PropertyListItem }) {
               </CardDescription>
             )}
           </div>
-          <div className="flex min-w-0 max-w-[45%] shrink-0 flex-col items-end gap-1.5">
+          <div className="flex max-w-[45%] shrink-0 flex-col items-end gap-1.5">
             {latest && <AuditStatusBadge status={latest.status} />}
             {p.mondayItemId && (
               <span className="max-w-full truncate rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-600">
