@@ -169,6 +169,7 @@ export function ZoneAudit({
   const [draft, setDraft] = useState<FormDraft | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [saving, setSaving] = useState(false);
   const [pinPromptFindingId, setPinPromptFindingId] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
 
@@ -231,8 +232,9 @@ export function ZoneAudit({
   }
 
   // ── Save the draft (POST + optimistic insert) ──
-  function saveDraft() {
-    if (!draft) return;
+  async function saveDraft() {
+    if (!draft || saving) return;
+    setSaving(true);
     const optimistic: FindingRow = {
       id: `tmp-${crypto.randomUUID()}`,
       issueType: draft.issueType,
@@ -250,46 +252,44 @@ export function ZoneAudit({
     setFindings((f) => [optimistic, ...f]);
     setDraft(null);
 
-    startTransition(async () => {
-      const res = await fetch("/api/findings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          auditId,
-          systemId,
-          zoneId,
-          issueType: optimistic.issueType,
-          componentCategory: optimistic.componentCategory,
-          componentSubtype: optimistic.componentSubtype,
-          componentSize: optimistic.componentSize,
-          severity: optimistic.severity,
-          solutionAction: optimistic.solutionAction,
-          costModel: draft.costModel,
-          quantity: optimistic.quantity,
-          unitOfMeasure: optimistic.unitOfMeasure,
-          description: optimistic.description,
-          notes: optimistic.notes,
-          photoUrls: optimistic.photoUrls,
-        }),
-      });
-      if (!res.ok) {
-        // Roll back the optimistic insert.
-        setFindings((f) => f.filter((x) => x.id !== optimistic.id));
-        toast.error("Failed to save finding");
-        return;
-      }
-      const saved = (await res.json()) as { id: string };
-      // Swap the temp ID for the real one.
-      setFindings((f) =>
-        f.map((x) => (x.id === optimistic.id ? { ...x, id: saved.id } : x)),
-      );
-      toast.success("Finding added");
-      if (sitePlan) {
-        setPinPromptFindingId(saved.id);
-      } else {
-        router.refresh();
-      }
+    const res = await fetch("/api/findings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        auditId,
+        systemId,
+        zoneId,
+        issueType: optimistic.issueType,
+        componentCategory: optimistic.componentCategory,
+        componentSubtype: optimistic.componentSubtype,
+        componentSize: optimistic.componentSize,
+        severity: optimistic.severity,
+        solutionAction: optimistic.solutionAction,
+        costModel: draft.costModel,
+        quantity: optimistic.quantity,
+        unitOfMeasure: optimistic.unitOfMeasure,
+        description: optimistic.description,
+        notes: optimistic.notes,
+        photoUrls: optimistic.photoUrls,
+      }),
     });
+    if (!res.ok) {
+      setFindings((f) => f.filter((x) => x.id !== optimistic.id));
+      toast.error("Failed to save finding");
+      setSaving(false);
+      return;
+    }
+    const saved = (await res.json()) as { id: string };
+    setFindings((f) =>
+      f.map((x) => (x.id === optimistic.id ? { ...x, id: saved.id } : x)),
+    );
+    setSaving(false);
+    toast.success("Finding added");
+    if (sitePlan) {
+      setPinPromptFindingId(saved.id);
+    } else {
+      router.refresh();
+    }
   }
 
   // ── Delete a finding (optimistic) ──
@@ -433,7 +433,7 @@ export function ZoneAudit({
           setDraft={setDraft}
           onSave={saveDraft}
           onCancel={() => setDraft(null)}
-          pending={pending}
+          pending={pending || saving}
           severityOrder={severityOrder}
           severityByEnum={severityByEnum}
           propertyId={propertyId}
