@@ -11,10 +11,13 @@ import type {
   PropertyZone,
   PropertyPart,
   SystemFile,
+  PropertyFile,
   ZoneType,
   WiringType,
+  SetupStatus,
 } from "@prisma/client";
 import { SystemFiles } from "./system-files";
+import { PropertyFiles } from "./property-files";
 import { compressImage } from "@/lib/image-compress";
 import {
   Card,
@@ -53,6 +56,7 @@ type AuditRow = {
 export function PropertyProfile({
   property,
   systems,
+  propertyFiles,
   audits,
   canEdit,
 }: {
@@ -63,14 +67,17 @@ export function PropertyProfile({
     city: string | null;
     state: string | null;
     zip: string | null;
+    setupStatus: SetupStatus;
     propertyManagerName: string | null;
     propertyManagerEmail: string | null;
     propertyManagerPhone: string | null;
   };
   systems: SystemFull[];
+  propertyFiles: PropertyFile[];
   audits: AuditRow[];
   canEdit: boolean;
 }) {
+  const [topTab, setTopTab] = useState<"systems" | "files">("systems");
   const [activeSystemId, setActiveSystemId] = useState<string | null>(
     systems[0]?.id ?? null,
   );
@@ -108,93 +115,119 @@ export function PropertyProfile({
         </CardContent>
       </Card>
 
-      {/* System tabs */}
-      <div className="flex flex-wrap items-center gap-2">
-        {systems.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => {
-              setActiveSystemId(s.id);
-              setSubTab("overview");
-            }}
-            className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
-              s.id === activeSystemId
-                ? "border-zinc-900 bg-zinc-900 text-zinc-50 dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
-                : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            }`}
-          >
-            {s.name}
-          </button>
-        ))}
-        {canEdit && !addingSystem && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setAddingSystem(true)}
-          >
-            + Add system
-          </Button>
-        )}
+      {/* Top-level tabs: Systems | Files */}
+      <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800">
+        <SubTabButton
+          active={topTab === "systems"}
+          onClick={() => setTopTab("systems")}
+        >
+          Systems ({systems.length})
+        </SubTabButton>
+        <SubTabButton
+          active={topTab === "files"}
+          onClick={() => setTopTab("files")}
+        >
+          Files ({propertyFiles.length})
+        </SubTabButton>
       </div>
 
-      {addingSystem && (
-        <AddSystemWizard
+      {topTab === "files" ? (
+        <PropertyFiles
           propertyId={property.id}
-          onCancel={() => setAddingSystem(false)}
-          onCreated={(id) => {
-            setAddingSystem(false);
-            setActiveSystemId(id);
-          }}
+          files={propertyFiles}
+          canEdit={canEdit}
         />
-      )}
-
-      {/* Active system */}
-      {activeSystem ? (
+      ) : (
         <>
-          <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800">
-            <SubTabButton active={subTab === "overview"} onClick={() => setSubTab("overview")}>
-              Overview
-            </SubTabButton>
-            <SubTabButton active={subTab === "parts"} onClick={() => setSubTab("parts")}>
-              Parts in use ({activeSystem.parts.length})
-            </SubTabButton>
-            <SubTabButton active={subTab === "files"} onClick={() => setSubTab("files")}>
-              Files ({activeSystem.files.length})
-            </SubTabButton>
+          {/* System tabs */}
+          <div className="flex flex-wrap items-center gap-2">
+            {systems.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => {
+                  setActiveSystemId(s.id);
+                  setSubTab("overview");
+                }}
+                className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                  s.id === activeSystemId
+                    ? "border-zinc-900 bg-zinc-900 text-zinc-50 dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
+                    : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                }`}
+              >
+                {s.name}
+              </button>
+            ))}
+            {canEdit && !addingSystem && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setAddingSystem(true)}
+              >
+                + Add system
+              </Button>
+            )}
           </div>
 
-          {subTab === "overview" ? (
-            <SystemOverview system={activeSystem} canEdit={canEdit} />
-          ) : subTab === "parts" ? (
-            <SystemParts system={activeSystem} canEdit={canEdit} />
-          ) : (
-            <SystemFiles
-              systemId={activeSystem.id}
-              zones={activeSystem.zones}
-              files={activeSystem.files}
-              canEdit={canEdit}
-              propertyName={property.name}
-              systemName={activeSystem.name}
-              audits={audits.map((a) => ({
-                id: a.id,
-                startedAt: a.startedAt,
-                status: a.status,
-                auditorName: a.auditor.name ?? a.auditor.email,
-                findingsCount: a._count.findings,
-              }))}
+          {addingSystem && (
+            <AddSystemWizard
+              propertyId={property.id}
+              onCancel={() => setAddingSystem(false)}
+              onCreated={(id) => {
+                setAddingSystem(false);
+                setActiveSystemId(id);
+              }}
             />
           )}
+
+          {/* Active system */}
+          {activeSystem ? (
+            <>
+              <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800">
+                <SubTabButton active={subTab === "overview"} onClick={() => setSubTab("overview")}>
+                  Overview
+                </SubTabButton>
+                <SubTabButton active={subTab === "parts"} onClick={() => setSubTab("parts")}>
+                  Parts in use ({activeSystem.parts.length})
+                </SubTabButton>
+                <SubTabButton active={subTab === "files"} onClick={() => setSubTab("files")}>
+                  Files ({activeSystem.files.length})
+                </SubTabButton>
+              </div>
+
+              {subTab === "overview" ? (
+                <SystemOverview system={activeSystem} canEdit={canEdit} />
+              ) : subTab === "parts" ? (
+                <SystemParts system={activeSystem} canEdit={canEdit} />
+              ) : (
+                <SystemFiles
+                  systemId={activeSystem.id}
+                  zones={activeSystem.zones}
+                  files={activeSystem.files}
+                  canEdit={canEdit}
+                  propertyName={property.name}
+                  systemName={activeSystem.name}
+                  audits={audits.map((a) => ({
+                    id: a.id,
+                    startedAt: a.startedAt,
+                    status: a.status,
+                    auditorName: a.auditor.name ?? a.auditor.email,
+                    findingsCount: a._count.findings,
+                  }))}
+                />
+              )}
+            </>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardDescription>
+                  No irrigation systems yet. {canEdit ? 'Click "Add system" above to create one.' : ''}
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          )}
         </>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardDescription>
-              No irrigation systems yet. {canEdit ? 'Click "Add system" above to create one.' : ''}
-            </CardDescription>
-          </CardHeader>
-        </Card>
       )}
 
       {/* Audit history (property-level, bottom) */}

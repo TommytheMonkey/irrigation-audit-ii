@@ -28,6 +28,7 @@ export default async function PropertyDetailPage({
           files: { orderBy: { createdAt: "desc" } },
         },
       },
+      files: { orderBy: { uploadedAt: "desc" } },
       audits: {
         orderBy: { startedAt: "desc" },
         include: {
@@ -60,11 +61,13 @@ export default async function PropertyDetailPage({
             city: property.city,
             state: property.state,
             zip: property.zip,
+            setupStatus: property.setupStatus,
             propertyManagerName: property.propertyManagerName,
             propertyManagerEmail: property.propertyManagerEmail,
             propertyManagerPhone: property.propertyManagerPhone,
           }}
           systems={property.systems}
+          propertyFiles={property.files}
           audits={property.audits}
           canEdit={canEdit}
         />
