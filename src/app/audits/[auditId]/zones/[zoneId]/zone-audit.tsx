@@ -360,6 +360,13 @@ export function ZoneAudit({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* DEBUG — remove after verifying pin flow */}
+      <div className="rounded bg-blue-100 p-2 text-xs text-blue-900">
+        sitePlan: {sitePlan ? `LOADED (${sitePlan.width}×${sitePlan.height})` : "NULL"} |
+        pinPrompt: {pinPromptFindingId ?? "none"} |
+        saving: {String(saving)}
+      </div>
+
       {/* ── Site plan picker overlay ── */}
       {showPicker && sitePlan && (
         <SitePlanPicker
