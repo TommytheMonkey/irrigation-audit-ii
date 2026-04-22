@@ -89,6 +89,19 @@ enum Severity {
   high
 }
 
+enum FileCategory {
+  DRAWINGS
+  CUTSHEET
+  MANUAL
+  PHOTO
+  OTHER
+}
+
+enum SetupStatus {
+  DRAFT
+  CONFIGURED
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tenancy
 // ─────────────────────────────────────────────────────────────────────────────
@@ -155,9 +168,10 @@ model User {
   lastLoginAt DateTime? @map("last_login_at")
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  org             Org          @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  audits          Audit[]      @relation("AuditAuditor")
+  org             Org              @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  audits          Audit[]          @relation("AuditAuditor")
   uploadedFiles   SystemFile[]
+  propertyFiles   PropertyFile[]   @relation("PropertyFileUploader")
 
   @@index([orgId])
   @@map("users")
@@ -209,12 +223,14 @@ model Property {
   // Free-form metadata: client status, billing status, contract value,
   // program tier, crew, etc. (see REFERENCE_NOTES.md §9)
   metadata             Json?
+  setupStatus          SetupStatus @default(CONFIGURED) @map("setup_status")
   createdAt            DateTime  @default(now()) @map("created_at")
   updatedAt            DateTime  @updatedAt @map("updated_at")
 
   org                  Org       @relation(fields: [orgId], references: [id], onDelete: Cascade)
   audits               Audit[]
   systems              PropertySystem[]
+  files                PropertyFile[]
 
   @@unique([orgId, mondayItemId])
   @@index([orgId])
@@ -355,6 +371,39 @@ model PropertyPart {
 
   @@index([systemId])
   @@map("property_parts")
+}
+
+// Property-level files: drawings, cutsheets, manuals, audit photos, etc.
+// Primary storage is Vercel Blob (client-side upload for any size). Optional
+// Google Drive mirror via the per-org OAuth integration.
+model PropertyFile {
+  id                String       @id @default(cuid())
+  propertyId        String       @map("property_id")
+  uploadedById      String       @map("uploaded_by_id")
+  fileName          String       @map("file_name")
+  mimeType          String       @map("mime_type")
+  fileSize          Int          @map("file_size")
+  category          FileCategory @default(OTHER)
+  isFullSitePlan    Boolean      @default(false) @map("is_full_site_plan")
+
+  blobUrl           String       @map("blob_url")
+  blobPathname      String       @map("blob_pathname")
+  driveFileId       String?      @map("drive_file_id")
+  driveWebViewLink  String?      @map("drive_web_view_link")
+
+  // Photo-specific: populated when category = PHOTO
+  zoneNumber        Int?         @map("zone_number")
+  photoSequence     Int?         @map("photo_sequence")
+  auditDate         DateTime?    @map("audit_date") @db.Date
+
+  uploadedAt        DateTime     @default(now()) @map("uploaded_at")
+
+  property          Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  uploader          User         @relation("PropertyFileUploader", fields: [uploadedById], references: [id])
+
+  @@index([propertyId])
+  @@index([propertyId, category])
+  @@map("property_files")
 }
 
 // Files attached to a system (or to a specific zone within the system).
