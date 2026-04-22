@@ -13,7 +13,7 @@ import { requireAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import type { AuditStatus, Severity } from "@prisma/client";
 import { AuditActions } from "./audit-actions";
-import { FindingsViewToggle } from "./findings-view-toggle";
+import { FindingsViewToggle, type UnmappedFinding } from "./findings-view-toggle";
 import type { MapFinding } from "./audit-map";
 
 export const dynamic = "force-dynamic";
@@ -129,7 +129,26 @@ export default async function AuditSummaryPage({
       };
     });
 
-  const unmappedCount = totalFindings - mapFindings.length;
+  const unmappedFindings: UnmappedFinding[] = audit.findings
+    .filter((f) => f.sitePlanX === null || f.sitePlanY === null)
+    .map((f) => {
+      const zone = f.zoneId ? zoneById.get(f.zoneId) : null;
+      return {
+        id: f.id,
+        severity: f.severity,
+        description:
+          f.description ??
+          `${f.componentSubtype ?? f.componentCategory}${
+            f.componentSize ? ` ${f.componentSize}` : ""
+          } — ${f.issueType}`,
+        zoneNumber: zone?.zoneNumber ?? 0,
+        zoneName: zone?.zoneName ?? null,
+      };
+    });
+
+  const zonesForMap = Array.from(zoneById.values()).sort(
+    (a, b) => a.zoneNumber - b.zoneNumber,
+  );
 
   return (
     <>
@@ -234,7 +253,8 @@ export default async function AuditSummaryPage({
         <FindingsViewToggle
           sitePlan={sitePlanForMap}
           mapFindings={mapFindings}
-          unmappedCount={unmappedCount}
+          unmappedFindings={unmappedFindings}
+          zones={zonesForMap}
           listView={
             <div className="flex flex-col gap-3">
               {audit.systems.flatMap((sys) =>

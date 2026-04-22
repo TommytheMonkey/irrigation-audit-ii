@@ -2,12 +2,28 @@
 
 import { useState, type ReactNode } from "react";
 import { AuditMap, type MapFinding } from "./audit-map";
+import { Card, CardContent } from "@/components/ui/card";
+
+export type UnmappedFinding = {
+  id: string;
+  severity: string;
+  description: string;
+  zoneNumber: number;
+  zoneName: string | null;
+};
+
+const SEVERITY_COLORS: Record<string, string> = {
+  low: "#22c55e",
+  medium: "#f59e0b",
+  high: "#ef4444",
+};
 
 export function FindingsViewToggle({
   listView,
   sitePlan,
   mapFindings,
-  unmappedCount,
+  unmappedFindings,
+  zones,
 }: {
   listView: ReactNode;
   sitePlan: {
@@ -16,9 +32,11 @@ export function FindingsViewToggle({
     height: number;
   } | null;
   mapFindings: MapFinding[];
-  unmappedCount: number;
+  unmappedFindings: UnmappedFinding[];
+  zones: { zoneNumber: number; zoneName: string | null }[];
 }) {
   const [view, setView] = useState<"list" | "map">("list");
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const hasMap = sitePlan && mapFindings.length > 0;
 
   return (
@@ -60,18 +78,52 @@ export function FindingsViewToggle({
             width={sitePlan.width}
             height={sitePlan.height}
             findings={mapFindings}
+            zones={zones}
           />
-          {unmappedCount > 0 && (
-            <p className="text-center text-xs text-muted-foreground">
-              {unmappedCount} finding{unmappedCount === 1 ? "" : "s"} not pinned on the site plan.{" "}
-              <button
-                type="button"
-                onClick={() => setView("list")}
-                className="underline hover:text-foreground"
-              >
-                View in list
-              </button>
-            </p>
+
+          {/* Unmapped findings drawer */}
+          {unmappedFindings.length > 0 && (
+            <Card>
+              <CardContent className="py-3">
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen((o) => !o)}
+                  className="flex w-full items-center justify-between text-sm"
+                >
+                  <span className="text-muted-foreground">
+                    {unmappedFindings.length} finding
+                    {unmappedFindings.length === 1 ? "" : "s"} not on map
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {drawerOpen ? "▲" : "▼"}
+                  </span>
+                </button>
+                {drawerOpen && (
+                  <ul className="mt-2 flex flex-col gap-1.5 border-t border-zinc-200 pt-2 dark:border-zinc-800">
+                    {unmappedFindings.map((f) => (
+                      <li
+                        key={f.id}
+                        className="flex items-center gap-2 text-sm"
+                      >
+                        <span
+                          className="h-2 w-2 shrink-0 rounded-full"
+                          style={{
+                            backgroundColor:
+                              SEVERITY_COLORS[f.severity] ?? "#94a3b8",
+                          }}
+                        />
+                        <span className="min-w-0 flex-1 truncate">
+                          {f.description}
+                        </span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          Z{f.zoneNumber}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
           )}
         </div>
       )}
