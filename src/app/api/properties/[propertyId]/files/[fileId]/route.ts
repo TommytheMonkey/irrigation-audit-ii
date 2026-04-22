@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
-import { del } from "@vercel/blob";
+import { del, put } from "@vercel/blob";
 import { db } from "@/lib/db";
 import { requireEditor } from "@/lib/system-profile-auth";
 import type { FileCategory } from "@prisma/client";
+import imageSize from "image-size";
 
 export const runtime = "nodejs";
+export const maxDuration = 30;
 
 const VALID_CATEGORIES = new Set([
   "DRAWINGS",
@@ -28,7 +30,7 @@ export async function PATCH(
 
   const file = await db.propertyFile.findFirst({
     where: { id: fileId, propertyId, property: { orgId: auth.user.orgId } },
-    select: { id: true },
+    select: { id: true, blobUrl: true, mimeType: true, blobPathname: true },
   });
   if (!file) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -59,6 +61,33 @@ export async function PATCH(
       }),
     },
   });
+
+  // When marking as full site plan, create/update SitePlanRender
+  if (body.isFullSitePlan === true) {
+    try {
+      await ensureSitePlanRender(fileId, file.blobUrl, file.mimeType);
+    } catch (e) {
+      console.error("[files/patch] site plan render failed:", e);
+      // Non-fatal: the file is still marked as full site plan, but the
+      // render might be missing. The UI degrades gracefully.
+    }
+  }
+
+  // When unmarking, clean up the render
+  if (body.isFullSitePlan === false) {
+    const existing = await db.sitePlanRender.findUnique({
+      where: { propertyFileId: fileId },
+    });
+    if (existing) {
+      try {
+        await del(existing.renderUrl);
+      } catch {
+        // best-effort
+      }
+      await db.sitePlanRender.delete({ where: { id: existing.id } });
+    }
+  }
+
   return NextResponse.json(updated);
 }
 
@@ -89,4 +118,65 @@ export async function DELETE(
 
   await db.propertyFile.delete({ where: { id: fileId } });
   return NextResponse.json({ ok: true });
+}
+
+// ── Site plan render ────────────────────────────────────────────────────────
+
+async function ensureSitePlanRender(
+  propertyFileId: string,
+  blobUrl: string,
+  mimeType: string,
+) {
+  // Delete any existing render for this file
+  const existing = await db.sitePlanRender.findUnique({
+    where: { propertyFileId },
+  });
+  if (existing) {
+    try {
+      if (existing.renderUrl !== blobUrl) await del(existing.renderUrl);
+    } catch {
+      // best-effort
+    }
+    await db.sitePlanRender.delete({ where: { id: existing.id } });
+  }
+
+  if (mimeType.startsWith("image/")) {
+    // For images: probe dimensions and point to the original
+    const res = await fetch(blobUrl);
+    const buf = Buffer.from(await res.arrayBuffer());
+    const dims = imageSize(buf);
+    if (!dims.width || !dims.height) {
+      throw new Error("Could not determine image dimensions");
+    }
+
+    await db.sitePlanRender.create({
+      data: {
+        propertyFileId,
+        renderUrl: blobUrl,
+        renderPathname: "",
+        width: dims.width,
+        height: dims.height,
+        status: "READY",
+      },
+    });
+    return;
+  }
+
+  if (mimeType === "application/pdf") {
+    // PDF rasterization: set status to PENDING — the client will rasterize
+    // via pdf.js in the browser and upload the result via a separate endpoint.
+    await db.sitePlanRender.create({
+      data: {
+        propertyFileId,
+        renderUrl: "",
+        renderPathname: "",
+        width: 0,
+        height: 0,
+        status: "PENDING",
+      },
+    });
+    return;
+  }
+
+  throw new Error(`Unsupported mime type for site plan: ${mimeType}`);
 }

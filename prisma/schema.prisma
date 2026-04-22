@@ -398,12 +398,33 @@ model PropertyFile {
 
   uploadedAt        DateTime     @default(now()) @map("uploaded_at")
 
-  property          Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  uploader          User         @relation("PropertyFileUploader", fields: [uploadedById], references: [id])
+  property          Property        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  uploader          User            @relation("PropertyFileUploader", fields: [uploadedById], references: [id])
+  sitePlanRender    SitePlanRender?
+  findingPins       AuditFinding[]
 
   @@index([propertyId])
   @@index([propertyId, category])
   @@map("property_files")
+}
+
+// Cached rasterized version of a site plan. If the PropertyFile is a PDF,
+// the first page is rendered to PNG at high DPI and uploaded to Blob. If
+// the PropertyFile is already an image, this row simply records its
+// dimensions and points to the original blobUrl.
+model SitePlanRender {
+  id              String       @id @default(cuid())
+  propertyFileId  String       @unique @map("property_file_id")
+  renderUrl       String       @map("render_url")
+  renderPathname  String       @map("render_pathname")
+  width           Int
+  height          Int
+  status          String       @default("READY")
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  propertyFile    PropertyFile @relation(fields: [propertyFileId], references: [id], onDelete: Cascade)
+
+  @@map("site_plan_renders")
 }
 
 // Files attached to a system (or to a specific zone within the system).
@@ -562,6 +583,11 @@ model AuditFinding {
   notes             String?
   // Photos: blob URLs (Vercel Blob in prod, /public/uploads in dev)
   photoUrls         String[]       @map("photo_urls")
+  // Site plan pin location — normalized 0..1 coordinates on the site plan image.
+  // Null when the user skips pinning or when the property has no site plan.
+  sitePlanX         Float?         @map("site_plan_x")
+  sitePlanY         Float?         @map("site_plan_y")
+  sitePlanFileId    String?        @map("site_plan_file_id")
   // Pricing — filled in by the estimator after Google Sheets handoff
   unitPrice         Decimal?       @db.Decimal(10, 2) @map("unit_price")
   extPrice          Decimal?       @db.Decimal(10, 2) @map("ext_price")
@@ -571,6 +597,7 @@ model AuditFinding {
   audit             Audit          @relation(fields: [auditId], references: [id], onDelete: Cascade)
   system            AuditSystem    @relation(fields: [systemId], references: [id], onDelete: Cascade)
   zone              AuditZone?     @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  sitePlanFile      PropertyFile?  @relation(fields: [sitePlanFileId], references: [id])
 
   @@index([auditId])
   @@index([systemId])
