@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   TransformWrapper,
   TransformComponent,
@@ -39,12 +39,9 @@ export function SitePlanPicker({
 }) {
   const [pin, setPin] = useState<{ x: number; y: number } | null>(null);
   const imageRef = useRef<HTMLImageElement>(null);
-  const isPanning = useRef(false);
 
   const handleTap = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      // Only place on tap-release (pointerUp), not during pan
-      if (isPanning.current) return;
+    (e: React.MouseEvent<HTMLDivElement>) => {
       const img = imageRef.current;
       if (!img) return;
 
@@ -93,14 +90,6 @@ export function SitePlanPicker({
           minScale={0.5}
           maxScale={5}
           centerOnInit
-          onPanningStart={() => {
-            isPanning.current = true;
-          }}
-          onPanningStop={() => {
-            setTimeout(() => {
-              isPanning.current = false;
-            }, 50);
-          }}
         >
           <TransformComponent
             wrapperStyle={{ width: "100%", height: "100%" }}
@@ -108,7 +97,7 @@ export function SitePlanPicker({
           >
             <div
               style={{ position: "relative", display: "inline-block" }}
-              onPointerUp={handleTap}
+              onClick={handleTap}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
