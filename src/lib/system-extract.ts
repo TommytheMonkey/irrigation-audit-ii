@@ -76,9 +76,8 @@ async function callClaude(
 ): Promise<ExtractedProfile> {
   const client = new Anthropic();
   const response = await client.messages.create({
-    model: "claude-opus-4-7",
+    model: "claude-sonnet-4-6",
     max_tokens: 16000,
-    thinking: { type: "adaptive" },
     system: EXTRACT_SYSTEM,
     messages: [{ role: "user", content: messageContent }],
   });
