@@ -127,6 +127,8 @@ export function ZoneAudit({
   zoneName,
   zoneType,
   completed,
+  propertyId,
+  propertyName,
   navItems,
   initialFindings,
   quickPicks,
@@ -140,6 +142,8 @@ export function ZoneAudit({
   zoneName: string | null;
   zoneType: ZoneType;
   completed: boolean;
+  propertyId: string;
+  propertyName: string;
   navItems: ZoneNavItem[];
   initialFindings: FindingRow[];
   quickPicks: QuickPickRow[];
@@ -343,6 +347,9 @@ export function ZoneAudit({
           pending={pending}
           severityOrder={severityOrder}
           severityByEnum={severityByEnum}
+          propertyId={propertyId}
+          propertyName={propertyName}
+          zoneNumber={zoneNumber}
         />
       ) : (
         <>
@@ -488,6 +495,9 @@ function DraftPanel({
   pending,
   severityOrder,
   severityByEnum,
+  propertyId,
+  propertyName,
+  zoneNumber,
 }: {
   draft: FormDraft;
   setDraft: (d: FormDraft) => void;
@@ -496,6 +506,9 @@ function DraftPanel({
   pending: boolean;
   severityOrder: Severity[];
   severityByEnum: Map<Severity, SeverityLevelRow>;
+  propertyId: string;
+  propertyName: string;
+  zoneNumber: number;
 }) {
   return (
     <Card className="border-primary/30 ring-2 ring-primary/20">
@@ -581,6 +594,9 @@ function DraftPanel({
         <PhotoButton
           urls={draft.photoUrls}
           onChange={(urls) => setDraft({ ...draft, photoUrls: urls })}
+          propertyId={propertyId}
+          propertyName={propertyName}
+          zoneNumber={zoneNumber}
         />
 
         {/* Notes */}
@@ -659,9 +675,15 @@ function SeverityButton({
 function PhotoButton({
   urls,
   onChange,
+  propertyId,
+  propertyName,
+  zoneNumber,
 }: {
   urls: string[];
   onChange: (urls: string[]) => void;
+  propertyId: string;
+  propertyName: string;
+  zoneNumber: number;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -671,14 +693,19 @@ function PhotoButton({
     setUploading(true);
     try {
       const uploaded: string[] = [];
+      const auditDate = new Date().toISOString().slice(0, 10);
       for (const rawFile of Array.from(files)) {
-        // Compress in-browser so iPhone photos (7–11 MB) fit under Vercel's
-        // 4.5 MB function body limit and upload in seconds instead of
-        // tens of seconds on mobile.
         const file = await compressImage(rawFile);
         const fd = new FormData();
         fd.append("file", file);
-        const res = await fetch("/api/upload", { method: "POST", body: fd });
+        fd.append("propertyId", propertyId);
+        fd.append("propertyName", propertyName);
+        fd.append("zoneNumber", String(zoneNumber));
+        fd.append("auditDate", auditDate);
+        const res = await fetch("/api/audit-photos", {
+          method: "POST",
+          body: fd,
+        });
         if (!res.ok) {
           toast.error("Upload failed");
           continue;

@@ -150,6 +150,8 @@ export default async function ZoneAuditPage({
           zoneName={zone.zoneName}
           zoneType={zone.zoneType}
           completed={zone.completedAt !== null}
+          propertyId={audit.property.id}
+          propertyName={audit.property.name}
           navItems={navItems}
           initialFindings={findingsForClient}
           quickPicks={quickPickRows}
