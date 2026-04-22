@@ -13,6 +13,8 @@ import { requireAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import type { AuditStatus, Severity } from "@prisma/client";
 import { AuditActions } from "./audit-actions";
+import { FindingsViewToggle } from "./findings-view-toggle";
+import type { MapFinding } from "./audit-map";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +26,7 @@ export default async function AuditSummaryPage({
   const { auditId } = await params;
   const user = await requireAuth();
 
-  const [audit, org] = await Promise.all([
+  const [audit, org, sitePlan] = await Promise.all([
     db.audit.findFirst({
       where: { id: auditId, orgId: user.orgId },
       include: {
@@ -47,6 +49,17 @@ export default async function AuditSummaryPage({
     db.org.findUniqueOrThrow({
       where: { id: user.orgId },
       select: { googleConnectedEmail: true, googleCredentialsEnc: true },
+    }),
+    db.propertyFile.findFirst({
+      where: {
+        property: { audits: { some: { id: auditId } } },
+        isFullSitePlan: true,
+      },
+      select: {
+        sitePlanRender: {
+          select: { renderUrl: true, width: true, height: true, status: true },
+        },
+      },
     }),
   ]);
   if (!audit) notFound();
@@ -74,6 +87,49 @@ export default async function AuditSummaryPage({
   const showPricing = audit.googleSheetId !== null;
   const googleConnected =
     org.googleConnectedEmail !== null && org.googleCredentialsEnc !== null;
+
+  // Build zone lookup for map findings
+  const zoneById = new Map<string, { zoneNumber: number; zoneName: string | null }>();
+  for (const sys of audit.systems) {
+    for (const z of sys.zones) {
+      zoneById.set(z.id, { zoneNumber: z.zoneNumber, zoneName: z.zoneName });
+    }
+  }
+
+  const sitePlanForMap =
+    sitePlan?.sitePlanRender?.status === "READY"
+      ? {
+          renderUrl: sitePlan.sitePlanRender.renderUrl,
+          width: sitePlan.sitePlanRender.width,
+          height: sitePlan.sitePlanRender.height,
+        }
+      : null;
+
+  const mapFindings: MapFinding[] = audit.findings
+    .filter((f) => f.sitePlanX !== null && f.sitePlanY !== null && f.zoneId)
+    .map((f) => {
+      const zone = zoneById.get(f.zoneId!);
+      return {
+        id: f.id,
+        x: Number(f.sitePlanX!),
+        y: Number(f.sitePlanY!),
+        severity: f.severity,
+        zoneNumber: zone?.zoneNumber ?? 0,
+        zoneName: zone?.zoneName ?? null,
+        description:
+          f.description ??
+          `${f.componentSubtype ?? f.componentCategory}${
+            f.componentSize ? ` ${f.componentSize}` : ""
+          } — ${f.issueType}`,
+        componentCategory: f.componentCategory,
+        quantity: f.quantity ? Number(f.quantity) : 1,
+        unitOfMeasure: f.unitOfMeasure,
+        solutionAction: f.solutionAction,
+        photoUrl: f.photoUrls.length > 0 ? f.photoUrls[0] : null,
+      };
+    });
+
+  const unmappedCount = totalFindings - mapFindings.length;
 
   return (
     <>
@@ -171,92 +227,100 @@ export default async function AuditSummaryPage({
           </Card>
         )}
 
-        {/* Zone-by-zone */}
+        {/* Zone-by-zone (with optional map toggle) */}
         <h2 className="mb-3 text-lg font-semibold tracking-tight">
           Findings by zone
         </h2>
-        <div className="mb-6 flex flex-col gap-3">
-          {audit.systems.flatMap((sys) =>
-            sys.zones.map((z) => {
-              const zoneTotal = z.findings.reduce(
-                (s, f) => s + (f.extPrice ? Number(f.extPrice) : 0),
-                0,
-              );
-              return (
-                <Card key={z.id}>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm">
-                        Zone {z.zoneNumber}
-                        {z.zoneName && (
-                          <span className="ml-2 font-normal text-muted-foreground">
-                            {z.zoneName}
-                          </span>
-                        )}
-                      </CardTitle>
-                      <div className="flex items-center gap-2">
-                        {showPricing && zoneTotal > 0 && (
-                          <span className="text-xs font-medium tabular-nums text-muted-foreground">
-                            {formatCurrency(zoneTotal)}
-                          </span>
-                        )}
-                        <Badge variant="secondary">
-                          {z.findings.length}{" "}
-                          {z.findings.length === 1 ? "finding" : "findings"}
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  {z.findings.length > 0 && (
-                    <CardContent>
-                      <ul className="flex flex-col gap-2 text-sm">
-                        {z.findings.map((f) => (
-                          <li key={f.id} className="flex items-start gap-2">
-                            <SeverityDot severity={f.severity} />
-                            <div className="flex-1 min-w-0">
-                              <div className="truncate">
-                                {f.description ??
-                                  `${f.componentSubtype ?? f.componentCategory}${
-                                    f.componentSize ? ` ${f.componentSize}` : ""
-                                  } — ${f.issueType}`}
-                              </div>
-                              {showPricing && (
-                                <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                                  {f.unitPrice !== null ? (
-                                    <>
-                                      <span className="tabular-nums">
-                                        {formatCurrency(Number(f.unitPrice))} ×{" "}
-                                        {f.quantity ? Number(f.quantity) : 1}
-                                      </span>
-                                      <span>=</span>
-                                      <span className="font-medium tabular-nums text-foreground">
-                                        {formatCurrency(
-                                          f.extPrice ? Number(f.extPrice) : 0,
-                                        )}
-                                      </span>
-                                    </>
-                                  ) : (
-                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                                      Needs pricing
-                                    </span>
+        <FindingsViewToggle
+          sitePlan={sitePlanForMap}
+          mapFindings={mapFindings}
+          unmappedCount={unmappedCount}
+          listView={
+            <div className="flex flex-col gap-3">
+              {audit.systems.flatMap((sys) =>
+                sys.zones.map((z) => {
+                  const zoneTotal = z.findings.reduce(
+                    (s, f) => s + (f.extPrice ? Number(f.extPrice) : 0),
+                    0,
+                  );
+                  return (
+                    <Card key={z.id}>
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-sm">
+                            Zone {z.zoneNumber}
+                            {z.zoneName && (
+                              <span className="ml-2 font-normal text-muted-foreground">
+                                {z.zoneName}
+                              </span>
+                            )}
+                          </CardTitle>
+                          <div className="flex items-center gap-2">
+                            {showPricing && zoneTotal > 0 && (
+                              <span className="text-xs font-medium tabular-nums text-muted-foreground">
+                                {formatCurrency(zoneTotal)}
+                              </span>
+                            )}
+                            <Badge variant="secondary">
+                              {z.findings.length}{" "}
+                              {z.findings.length === 1 ? "finding" : "findings"}
+                            </Badge>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      {z.findings.length > 0 && (
+                        <CardContent>
+                          <ul className="flex flex-col gap-2 text-sm">
+                            {z.findings.map((f) => (
+                              <li key={f.id} className="flex items-start gap-2">
+                                <SeverityDot severity={f.severity} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="truncate">
+                                    {f.description ??
+                                      `${f.componentSubtype ?? f.componentCategory}${
+                                        f.componentSize ? ` ${f.componentSize}` : ""
+                                      } — ${f.issueType}`}
+                                  </div>
+                                  {showPricing && (
+                                    <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                                      {f.unitPrice !== null ? (
+                                        <>
+                                          <span className="tabular-nums">
+                                            {formatCurrency(Number(f.unitPrice))} ×{" "}
+                                            {f.quantity ? Number(f.quantity) : 1}
+                                          </span>
+                                          <span>=</span>
+                                          <span className="font-medium tabular-nums text-foreground">
+                                            {formatCurrency(
+                                              f.extPrice ? Number(f.extPrice) : 0,
+                                            )}
+                                          </span>
+                                        </>
+                                      ) : (
+                                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                                          Needs pricing
+                                        </span>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
-                              )}
-                            </div>
-                            <span className="text-xs text-muted-foreground tabular-nums shrink-0">
-                              {f.quantity ? Number(f.quantity) : 1}{" "}
-                              {f.unitOfMeasure}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </CardContent>
-                  )}
-                </Card>
-              );
-            }),
-          )}
-        </div>
+                                <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                                  {f.quantity ? Number(f.quantity) : 1}{" "}
+                                  {f.unitOfMeasure}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </CardContent>
+                      )}
+                    </Card>
+                  );
+                }),
+              )}
+            </div>
+          }
+        />
+        <div className="mb-6" />
 
         <AuditActions
           auditId={audit.id}
