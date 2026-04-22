@@ -18,6 +18,7 @@ import type {
 } from "@prisma/client";
 import { SystemFiles } from "./system-files";
 import { PropertyFiles } from "./property-files";
+import { SetupFromDrawings } from "./setup-from-drawings";
 import { compressImage } from "@/lib/image-compress";
 import {
   Card,
@@ -85,6 +86,7 @@ export function PropertyProfile({
     "overview",
   );
   const [addingSystem, setAddingSystem] = useState(false);
+  const [showSetupWizard, setShowSetupWizard] = useState(false);
 
   const activeSystem = systems.find((s) => s.id === activeSystemId) ?? null;
 
@@ -114,6 +116,33 @@ export function PropertyProfile({
           <Field label="PM Phone" value={property.propertyManagerPhone} />
         </CardContent>
       </Card>
+
+      {/* Setup from drawings — shown for DRAFT properties */}
+      {property.setupStatus === "DRAFT" && canEdit && !showSetupWizard && (
+        <Card className="border-dashed border-primary/50 bg-primary/5">
+          <CardContent className="flex items-center justify-between gap-4 py-4">
+            <div>
+              <p className="text-sm font-medium">
+                This property hasn't been configured yet.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Upload irrigation schedule drawings to auto-extract POCs, zones,
+                and valve data.
+              </p>
+            </div>
+            <Button onClick={() => setShowSetupWizard(true)}>
+              Set Up From Drawings
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {showSetupWizard && (
+        <SetupFromDrawings
+          propertyId={property.id}
+          onClose={() => setShowSetupWizard(false)}
+        />
+      )}
 
       {/* Top-level tabs: Systems | Files */}
       <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800">
