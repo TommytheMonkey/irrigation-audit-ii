@@ -52,10 +52,18 @@ type AuditRow = {
   _count: { findings: number; systems: number; zones: number };
 };
 
+type SitePlanInfo = {
+  id: string;
+  fileName: string;
+  blobUrl: string;
+  mimeType: string;
+} | null;
+
 export function PropertyProfile({
   property,
   systems,
   audits,
+  sitePlan,
   canEdit,
 }: {
   property: {
@@ -72,6 +80,7 @@ export function PropertyProfile({
   };
   systems: SystemFull[];
   audits: AuditRow[];
+  sitePlan: SitePlanInfo;
   canEdit: boolean;
 }) {
   const [activeSystemId, setActiveSystemId] = useState<string | null>(
@@ -111,6 +120,13 @@ export function PropertyProfile({
           <Field label="PM Phone" value={property.propertyManagerPhone} />
         </CardContent>
       </Card>
+
+      {/* Site plan */}
+      <SitePlanCard
+        propertyId={property.id}
+        sitePlan={sitePlan}
+        canEdit={canEdit}
+      />
 
       {/* Setup from drawings — shown for DRAFT properties */}
       {property.setupStatus === "DRAFT" && canEdit && !showSetupWizard && (
@@ -481,6 +497,166 @@ function AddSystemWizard({
             </Button>
           </div>
         </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SitePlanCard({
+  propertyId,
+  sitePlan,
+  canEdit,
+}: {
+  propertyId: string;
+  sitePlan: SitePlanInfo;
+  canEdit: boolean;
+}) {
+  const router = useRouter();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [pending, start] = useTransition();
+
+  function upload() {
+    fileRef.current?.click();
+  }
+
+  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    if (file.size > 4.4 * 1024 * 1024) {
+      toast.error(
+        `${file.name} is ${(file.size / 1024 / 1024).toFixed(1)} MB — over the 4.5 MB upload limit.`,
+      );
+      return;
+    }
+
+    start(async () => {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(
+        `/api/properties/${propertyId}/files/upload`,
+        { method: "POST", body: form },
+      );
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { message?: string };
+        toast.error(data.message ?? "Upload failed.");
+        return;
+      }
+      toast.success("Site plan uploaded.");
+      router.refresh();
+    });
+  }
+
+  function remove() {
+    if (!sitePlan) return;
+    if (!confirm("Remove the site plan?")) return;
+    start(async () => {
+      const res = await fetch(
+        `/api/properties/${propertyId}/files/${sitePlan.id}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) {
+        toast.error("Couldn't remove site plan.");
+        return;
+      }
+      toast.success("Site plan removed.");
+      router.refresh();
+    });
+  }
+
+  const isImage = sitePlan?.mimeType.startsWith("image/");
+
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-4 py-4">
+        {sitePlan ? (
+          <>
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-zinc-200 bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900">
+              {isImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={sitePlan.blobUrl}
+                  alt="Site plan"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="text-[10px] font-semibold uppercase text-muted-foreground">
+                  PDF
+                </span>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <a
+                  href={sitePlan.blobUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="truncate text-sm font-medium hover:underline"
+                >
+                  {sitePlan.fileName}
+                </a>
+                <Badge variant="default" className="shrink-0 text-[10px]">
+                  Site Plan
+                </Badge>
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Used to pin finding locations during audits
+              </p>
+            </div>
+            {canEdit && (
+              <div className="flex gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={upload}
+                  disabled={pending}
+                >
+                  Replace
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={remove}
+                  disabled={pending}
+                  className="text-destructive"
+                >
+                  Remove
+                </Button>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">Site plan</p>
+              <p className="text-xs text-muted-foreground">
+                Upload an image or PDF of the property site plan to pin finding
+                locations during audits.
+              </p>
+            </div>
+            {canEdit && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={upload}
+                disabled={pending}
+                className="h-11 shrink-0"
+              >
+                {pending ? "Uploading..." : "Upload"}
+              </Button>
+            )}
+          </>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*,application/pdf"
+          className="hidden"
+          onChange={onFile}
+        />
       </CardContent>
     </Card>
   );

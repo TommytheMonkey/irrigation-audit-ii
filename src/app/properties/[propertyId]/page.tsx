@@ -40,6 +40,11 @@ export default async function PropertyDetailPage({
 
   if (!property) notFound();
 
+  const sitePlan = await db.propertyFile.findFirst({
+    where: { propertyId, isFullSitePlan: true },
+    select: { id: true, fileName: true, blobUrl: true, mimeType: true },
+  });
+
   const canEdit = user.role !== "estimator";
 
   return (
@@ -67,6 +72,7 @@ export default async function PropertyDetailPage({
           }}
           systems={property.systems}
           audits={property.audits}
+          sitePlan={sitePlan}
           canEdit={canEdit}
         />
       </main>

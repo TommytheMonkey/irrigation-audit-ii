@@ -1,107 +1,132 @@
 import { NextResponse } from "next/server";
-import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
+import { put } from "@vercel/blob";
 import { db } from "@/lib/db";
 import { requireEditor } from "@/lib/system-profile-auth";
-import type { FileCategory } from "@prisma/client";
+import imageSize from "image-size";
 
 export const runtime = "nodejs";
 
-const VALID_CATEGORIES = new Set([
-  "DRAWINGS",
-  "CUTSHEET",
-  "MANUAL",
-  "PHOTO",
-  "OTHER",
-]);
-
+// POST /api/properties/[propertyId]/files/upload
+// multipart/form-data: file
+// Uploads a site plan image/PDF, creates a PropertyFile with
+// isFullSitePlan=true, and auto-creates the SitePlanRender.
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ propertyId: string }> },
-): Promise<Response> {
+) {
   const { propertyId } = await params;
-  const body = (await req.json()) as HandleUploadBody;
+  const auth = await requireEditor();
+  if (!auth.ok) {
+    return NextResponse.json(auth.body, { status: auth.status });
+  }
 
-  try {
-    const result = await handleUpload({
-      body,
-      request: req,
-      onBeforeGenerateToken: async (_pathname, clientPayload) => {
-        const auth = await requireEditor();
-        if (!auth.ok) throw new Error("unauthorized");
+  const prop = await db.property.findFirst({
+    where: { id: propertyId, orgId: auth.user.orgId },
+    select: { id: true },
+  });
+  if (!prop) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
 
-        const prop = await db.property.findFirst({
-          where: { id: propertyId, orgId: auth.user.orgId },
-          select: { id: true },
-        });
-        if (!prop) throw new Error("property_not_found");
+  const form = await req.formData().catch(() => null);
+  const file = form?.get("file");
+  if (!(file instanceof File)) {
+    return NextResponse.json({ error: "no_file" }, { status: 400 });
+  }
 
-        const payload = parsePayload(clientPayload);
-
-        return {
-          allowedContentTypes: [
-            "image/*",
-            "application/pdf",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/vnd.ms-excel",
-            "text/plain",
-            "text/csv",
-          ],
-          maximumSizeInBytes: 100 * 1024 * 1024,
-          tokenPayload: JSON.stringify({
-            userId: auth.user.id,
-            propertyId,
-            category: payload.category ?? "OTHER",
-            filename: _pathname.split("/").pop() ?? _pathname,
-          }),
-        };
-      },
-      onUploadCompleted: async ({ blob, tokenPayload }) => {
-        if (!tokenPayload) return;
-        const p = JSON.parse(tokenPayload) as {
-          userId: string;
-          propertyId: string;
-          category: string;
-          filename: string;
-        };
-        try {
-          await db.propertyFile.create({
-            data: {
-              propertyId: p.propertyId,
-              uploadedById: p.userId,
-              fileName: p.filename,
-              mimeType: blob.contentType ?? "application/octet-stream",
-              fileSize: 0,
-              category: (VALID_CATEGORIES.has(p.category)
-                ? p.category
-                : "OTHER") as FileCategory,
-              blobUrl: blob.url,
-              blobPathname: blob.pathname,
-            },
-          });
-        } catch (e) {
-          console.error("[property-files/upload] persist failed:", e);
-        }
-      },
-    });
-    return NextResponse.json(result);
-  } catch (e) {
-    console.error("[property-files/upload] handshake failed:", e);
+  const mime = file.type || "application/octet-stream";
+  if (!mime.startsWith("image/") && mime !== "application/pdf") {
     return NextResponse.json(
-      {
-        error: "upload_failed",
-        message: e instanceof Error ? e.message : "Upload failed",
-      },
+      { error: "invalid_type", message: "Site plan must be an image or PDF." },
       { status: 400 },
     );
   }
-}
 
-function parsePayload(raw: string | null): { category?: string } {
-  if (!raw) return {};
+  const blobKey = `orgs/${auth.user.orgId}/site-plans/${propertyId}-${file.name}`;
+
   try {
-    return JSON.parse(raw) as { category?: string };
-  } catch {
-    return {};
+    const blob = await put(blobKey, file, {
+      access: "public",
+      contentType: mime,
+      addRandomSuffix: false,
+    });
+
+    // Clear any existing full site plan on this property
+    await db.propertyFile.updateMany({
+      where: { propertyId, isFullSitePlan: true },
+      data: { isFullSitePlan: false },
+    });
+
+    const pf = await db.propertyFile.create({
+      data: {
+        propertyId,
+        uploadedById: auth.user.id,
+        fileName: file.name,
+        mimeType: mime,
+        fileSize: file.size,
+        category: "DRAWINGS",
+        blobUrl: blob.url,
+        blobPathname: blob.pathname,
+        isFullSitePlan: true,
+      },
+    });
+
+    // Auto-create SitePlanRender
+    if (mime.startsWith("image/")) {
+      const res = await fetch(blob.url);
+      const buf = Buffer.from(await res.arrayBuffer());
+      const dims = imageSize(buf);
+      if (dims.width && dims.height) {
+        await db.sitePlanRender.upsert({
+          where: { propertyFileId: pf.id },
+          create: {
+            propertyFileId: pf.id,
+            renderUrl: blob.url,
+            renderPathname: "",
+            width: dims.width,
+            height: dims.height,
+            status: "READY",
+          },
+          update: {
+            renderUrl: blob.url,
+            width: dims.width,
+            height: dims.height,
+            status: "READY",
+          },
+        });
+      }
+    } else {
+      // PDF — client-side rasterization needed
+      await db.sitePlanRender.upsert({
+        where: { propertyFileId: pf.id },
+        create: {
+          propertyFileId: pf.id,
+          renderUrl: "",
+          renderPathname: "",
+          width: 0,
+          height: 0,
+          status: "PENDING",
+        },
+        update: {
+          renderUrl: "",
+          width: 0,
+          height: 0,
+          status: "PENDING",
+        },
+      });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      fileId: pf.id,
+      blobUrl: blob.url,
+      fileName: pf.fileName,
+    });
+  } catch (e) {
+    console.error("[site-plan/upload] failed:", e);
+    return NextResponse.json(
+      { error: "upload_failed", message: "Site plan upload failed." },
+      { status: 502 },
+    );
   }
 }
