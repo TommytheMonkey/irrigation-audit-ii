@@ -28,7 +28,6 @@ export default async function PropertyDetailPage({
           files: { orderBy: { createdAt: "desc" } },
         },
       },
-      files: { orderBy: { uploadedAt: "desc" } },
       audits: {
         orderBy: { startedAt: "desc" },
         include: {
@@ -67,7 +66,6 @@ export default async function PropertyDetailPage({
             propertyManagerPhone: property.propertyManagerPhone,
           }}
           systems={property.systems}
-          propertyFiles={property.files}
           audits={property.audits}
           canEdit={canEdit}
         />

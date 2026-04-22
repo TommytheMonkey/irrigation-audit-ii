@@ -3,7 +3,6 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { upload } from "@vercel/blob/client";
 import type { PropertyZone, SystemFile } from "@prisma/client";
 import {
   Card,
@@ -116,27 +115,35 @@ function UploadCard({
   const [targetZoneId, setTargetZoneId] = useState<string>("system");
   const [tagsText, setTagsText] = useState("");
 
-  async function onFiles(files: FileList | null) {
-    if (!files || files.length === 0) return;
+  async function onFiles(fileList: File[]) {
+    if (fileList.length === 0) return;
     setUploading(true);
     const tags = tagsText
       .split(",")
       .map((t) => t.trim())
       .filter((t) => t.length > 0);
     let okCount = 0;
-    for (const file of Array.from(files)) {
+    for (const file of fileList) {
+      if (file.size > 4.4 * 1024 * 1024) {
+        toast.error(
+          `${file.name} is ${(file.size / 1024 / 1024).toFixed(1)} MB — over the 4.5 MB upload limit.`,
+        );
+        continue;
+      }
       try {
-        // @vercel/blob/client handles the multi-step upload handshake with
-        // the server token endpoint, then streams directly to Blob.
-        await upload(file.name, file, {
-          access: "public",
-          handleUploadUrl: "/api/property-files/upload",
-          clientPayload: JSON.stringify({
-            systemId,
-            zoneId: targetZoneId === "system" ? null : targetZoneId,
-            tags,
-          }),
+        const form = new FormData();
+        form.append("file", file);
+        form.append("systemId", systemId);
+        if (targetZoneId !== "system") form.append("zoneId", targetZoneId);
+        if (tags.length > 0) form.append("tags", JSON.stringify(tags));
+        const res = await fetch("/api/property-files/upload", {
+          method: "POST",
+          body: form,
         });
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as { message?: string };
+          throw new Error(data.message ?? "Upload failed");
+        }
         okCount++;
       } catch (e) {
         console.error("[upload] failed for", file.name, e);
@@ -148,11 +155,8 @@ function UploadCard({
     setUploading(false);
     setTagsText("");
     if (okCount > 0) {
-      toast.success(
-        `Uploaded ${okCount} file${okCount === 1 ? "" : "s"}. Refreshing…`,
-      );
-      // Small delay lets the onUploadCompleted webhook land before refresh.
-      setTimeout(() => router.refresh(), 800);
+      toast.success(`Uploaded ${okCount} file${okCount === 1 ? "" : "s"}.`);
+      router.refresh();
     }
   }
 
@@ -162,7 +166,7 @@ function UploadCard({
         <CardTitle className="text-base">Upload files</CardTitle>
         <CardDescription>
           As-builts, worksheets, photos, emails, spec sheets — anything. Up
-          to 100 MB per file.
+          to 4 MB per file.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -215,9 +219,11 @@ function UploadCard({
             multiple
             className="hidden"
             onChange={(e) => {
-              const f = e.target.files;
+              const f = e.target.files
+                ? Array.from(e.target.files)
+                : [];
               e.target.value = "";
-              void onFiles(f);
+              if (f.length > 0) void onFiles(f);
             }}
           />
         </div>

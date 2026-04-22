@@ -11,13 +11,11 @@ import type {
   PropertyZone,
   PropertyPart,
   SystemFile,
-  PropertyFile,
   ZoneType,
   WiringType,
   SetupStatus,
 } from "@prisma/client";
 import { SystemFiles } from "./system-files";
-import { PropertyFiles } from "./property-files";
 import { SetupFromDrawings } from "./setup-from-drawings";
 import { compressImage } from "@/lib/image-compress";
 import {
@@ -57,7 +55,6 @@ type AuditRow = {
 export function PropertyProfile({
   property,
   systems,
-  propertyFiles,
   audits,
   canEdit,
 }: {
@@ -74,11 +71,9 @@ export function PropertyProfile({
     propertyManagerPhone: string | null;
   };
   systems: SystemFull[];
-  propertyFiles: PropertyFile[];
   audits: AuditRow[];
   canEdit: boolean;
 }) {
-  const [topTab, setTopTab] = useState<"systems" | "files">("systems");
   const [activeSystemId, setActiveSystemId] = useState<string | null>(
     systems[0]?.id ?? null,
   );
@@ -144,32 +139,8 @@ export function PropertyProfile({
         />
       )}
 
-      {/* Top-level tabs: Systems | Files */}
-      <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800">
-        <SubTabButton
-          active={topTab === "systems"}
-          onClick={() => setTopTab("systems")}
-        >
-          Systems ({systems.length})
-        </SubTabButton>
-        <SubTabButton
-          active={topTab === "files"}
-          onClick={() => setTopTab("files")}
-        >
-          Files ({propertyFiles.length})
-        </SubTabButton>
-      </div>
-
-      {topTab === "files" ? (
-        <PropertyFiles
-          propertyId={property.id}
-          files={propertyFiles}
-          canEdit={canEdit}
-        />
-      ) : (
-        <>
-          {/* System tabs */}
-          <div className="flex flex-wrap items-center gap-2">
+      {/* System tabs */}
+      <div className="flex flex-wrap items-center gap-2">
             {systems.map((s) => (
               <button
                 key={s.id}
@@ -256,8 +227,6 @@ export function PropertyProfile({
               </CardHeader>
             </Card>
           )}
-        </>
-      )}
 
       {/* Audit history (property-level, bottom) */}
       <Card>
