@@ -96,37 +96,22 @@ export async function POST(
         });
       }
     } else {
-      // PDF — rasterize page 1 server-side
-      const { pdf } = await import("pdf-to-img");
-      const pdfRes = await fetch(blob.url);
-      const pdfBuf = Buffer.from(await pdfRes.arrayBuffer());
-      const doc = await pdf(pdfBuf, { scale: 2 });
-      const page1 = await doc.getPage(1);
-
-      const renderKey = `orgs/${auth.user.orgId}/site-plans/${propertyId}-render.png`;
-      const renderBlob = await put(renderKey, page1, {
-        access: "public",
-        contentType: "image/png",
-        addRandomSuffix: false,
-      });
-
-      const dims = imageSize(page1);
+      // PDF — render will be provided by the client after rasterizing page 1
       await db.sitePlanRender.upsert({
         where: { propertyFileId: pf.id },
         create: {
           propertyFileId: pf.id,
-          renderUrl: renderBlob.url,
-          renderPathname: renderBlob.pathname,
-          width: dims.width ?? 0,
-          height: dims.height ?? 0,
-          status: "READY",
+          renderUrl: "",
+          renderPathname: "",
+          width: 0,
+          height: 0,
+          status: "PENDING",
         },
         update: {
-          renderUrl: renderBlob.url,
-          renderPathname: renderBlob.pathname,
-          width: dims.width ?? 0,
-          height: dims.height ?? 0,
-          status: "READY",
+          renderUrl: "",
+          width: 0,
+          height: 0,
+          status: "PENDING",
         },
       });
     }

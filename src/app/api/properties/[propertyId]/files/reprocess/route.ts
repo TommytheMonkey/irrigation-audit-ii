@@ -6,8 +6,11 @@ import imageSize from "image-size";
 
 export const runtime = "nodejs";
 
+// Accepts a client-rendered PNG of a PDF site plan's first page.
+// The client rasterizes the PDF in-browser using pdfjs-dist, then
+// POSTs the image here so we can store it and mark the render READY.
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ propertyId: string }> },
 ) {
   const { propertyId } = await params;
@@ -18,36 +21,30 @@ export async function POST(
 
   const pf = await db.propertyFile.findFirst({
     where: { propertyId, isFullSitePlan: true, property: { orgId: auth.user.orgId } },
-    include: { sitePlanRender: true },
+    select: { id: true },
   });
 
   if (!pf) {
     return NextResponse.json({ error: "no_site_plan" }, { status: 404 });
   }
 
-  if (pf.sitePlanRender?.status === "READY") {
-    return NextResponse.json({ ok: true, message: "already ready" });
-  }
-
-  if (pf.mimeType !== "application/pdf") {
-    return NextResponse.json({ error: "not_pdf" }, { status: 400 });
+  const form = await req.formData().catch(() => null);
+  const file = form?.get("render");
+  if (!(file instanceof File)) {
+    return NextResponse.json({ error: "no_render" }, { status: 400 });
   }
 
   try {
-    const { pdf } = await import("pdf-to-img");
-    const pdfRes = await fetch(pf.blobUrl);
-    const pdfBuf = Buffer.from(await pdfRes.arrayBuffer());
-    const doc = await pdf(pdfBuf, { scale: 2 });
-    const page1 = await doc.getPage(1);
+    const buf = Buffer.from(await file.arrayBuffer());
+    const dims = imageSize(buf);
 
     const renderKey = `orgs/${auth.user.orgId}/site-plans/${propertyId}-render.png`;
-    const renderBlob = await put(renderKey, page1, {
+    const renderBlob = await put(renderKey, buf, {
       access: "public",
       contentType: "image/png",
       addRandomSuffix: false,
     });
 
-    const dims = imageSize(page1);
     await db.sitePlanRender.upsert({
       where: { propertyFileId: pf.id },
       create: {

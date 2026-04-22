@@ -545,6 +545,11 @@ function SitePlanCard({
         return;
       }
       toast.success("Site plan uploaded.");
+
+      if (file.type === "application/pdf") {
+        await rasterizePdf(file);
+      }
+
       router.refresh();
     });
   }
@@ -573,19 +578,57 @@ function SitePlanCard({
     sitePlan.sitePlanRender?.status !== "READY";
   const [reprocessing, setReprocessing] = useState(false);
 
-  useEffect(() => {
-    if (!needsReprocess) return;
+  async function rasterizePdf(fileOrUrl: File | string) {
     setReprocessing(true);
-    fetch(`/api/properties/${propertyId}/files/reprocess`, { method: "POST" })
-      .then((res) => {
-        if (res.ok) {
-          toast.success("Site plan processed for audit pins.");
-          router.refresh();
-        }
-      })
-      .catch(() => {})
-      .finally(() => setReprocessing(false));
-  }, [needsReprocess, propertyId, router]);
+    try {
+      const pdfjsLib = await import("pdfjs-dist");
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+
+      let data: ArrayBuffer;
+      if (fileOrUrl instanceof File) {
+        data = await fileOrUrl.arrayBuffer();
+      } else {
+        const resp = await fetch(fileOrUrl);
+        data = await resp.arrayBuffer();
+      }
+
+      const doc = await pdfjsLib.getDocument({ data }).promise;
+      const page = await doc.getPage(1);
+      const scale = 2;
+      const viewport = page.getViewport({ scale });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext("2d")!;
+      await page.render({ canvasContext: ctx, viewport, canvas } as never).promise;
+
+      const blob = await new Promise<Blob>((resolve) =>
+        canvas.toBlob((b) => resolve(b!), "image/png"),
+      );
+
+      const form = new FormData();
+      form.append("render", blob, "render.png");
+      const res = await fetch(
+        `/api/properties/${propertyId}/files/reprocess`,
+        { method: "POST", body: form },
+      );
+      if (res.ok) {
+        toast.success("Site plan ready for audit pins.");
+        router.refresh();
+      }
+    } catch (e) {
+      console.error("[rasterizePdf]", e);
+    } finally {
+      setReprocessing(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!needsReprocess || !sitePlan) return;
+    void rasterizePdf(sitePlan.blobUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsReprocess]);
 
   return (
     <Card>
