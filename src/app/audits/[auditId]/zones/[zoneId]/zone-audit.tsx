@@ -286,8 +286,9 @@ export function ZoneAudit({
       toast.success("Finding added");
       if (sitePlan) {
         setPinPromptFindingId(saved.id);
+      } else {
+        router.refresh();
       }
-      router.refresh();
     });
   }
 
@@ -354,6 +355,7 @@ export function ZoneAudit({
   function skipPin() {
     setPinPromptFindingId(null);
     setShowPicker(false);
+    router.refresh();
   }
 
   return (
