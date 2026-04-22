@@ -5,7 +5,7 @@ import { extractFromImage } from "@/lib/system-extract";
 import type { ZoneType } from "@prisma/client";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 // POST /api/property-systems/from-photo
 // multipart/form-data: file, propertyId, name

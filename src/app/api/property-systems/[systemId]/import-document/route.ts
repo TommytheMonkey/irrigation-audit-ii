@@ -8,7 +8,7 @@ import type { ZoneType } from "@prisma/client";
 export const runtime = "nodejs";
 // PDFs + Claude extraction can take a while — Claude Opus with adaptive
 // thinking on a 5-page drawing regularly takes 30-45s.
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 // POST /api/property-systems/[systemId]/import-document
 // multipart/form-data with one "file" field (xlsx or pdf).
