@@ -260,9 +260,11 @@ function UploadZone({ propertyId }: { propertyId: string }) {
             multiple
             className="hidden"
             onChange={(e) => {
-              const f = e.target.files;
+              const f = e.target.files
+                ? Array.from(e.target.files)
+                : [];
               e.target.value = "";
-              if (f) void processFiles(f);
+              if (f.length > 0) void processFiles(f);
             }}
           />
         </div>
