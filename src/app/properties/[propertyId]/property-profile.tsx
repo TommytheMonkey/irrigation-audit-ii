@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -57,6 +57,7 @@ type SitePlanInfo = {
   fileName: string;
   blobUrl: string;
   mimeType: string;
+  sitePlanRender: { status: string } | null;
 } | null;
 
 export function PropertyProfile({
@@ -566,6 +567,25 @@ function SitePlanCard({
   }
 
   const isImage = sitePlan?.mimeType.startsWith("image/");
+  const needsReprocess =
+    sitePlan &&
+    sitePlan.mimeType === "application/pdf" &&
+    sitePlan.sitePlanRender?.status !== "READY";
+  const [reprocessing, setReprocessing] = useState(false);
+
+  useEffect(() => {
+    if (!needsReprocess) return;
+    setReprocessing(true);
+    fetch(`/api/properties/${propertyId}/files/reprocess`, { method: "POST" })
+      .then((res) => {
+        if (res.ok) {
+          toast.success("Site plan processed for audit pins.");
+          router.refresh();
+        }
+      })
+      .catch(() => {})
+      .finally(() => setReprocessing(false));
+  }, [needsReprocess, propertyId, router]);
 
   return (
     <Card>
@@ -600,9 +620,15 @@ function SitePlanCard({
                   Site Plan
                 </Badge>
               </div>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Used to pin finding locations during audits
-              </p>
+              {reprocessing ? (
+                <p className="mt-0.5 text-xs text-amber-600">
+                  Processing PDF for audit pins...
+                </p>
+              ) : (
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Used to pin finding locations during audits
+                </p>
+              )}
             </div>
             {canEdit && (
               <div className="flex gap-1">

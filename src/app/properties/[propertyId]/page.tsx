@@ -42,7 +42,13 @@ export default async function PropertyDetailPage({
 
   const sitePlan = await db.propertyFile.findFirst({
     where: { propertyId, isFullSitePlan: true },
-    select: { id: true, fileName: true, blobUrl: true, mimeType: true },
+    select: {
+      id: true,
+      fileName: true,
+      blobUrl: true,
+      mimeType: true,
+      sitePlanRender: { select: { status: true } },
+    },
   });
 
   const canEdit = user.role !== "estimator";
