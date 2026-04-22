@@ -16,6 +16,18 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  SitePlanPicker,
+  type ExistingPin,
+} from "./site-plan-picker";
+
+export type SitePlanData = {
+  fileId: string;
+  renderUrl: string;
+  width: number;
+  height: number;
+  existingPins: ExistingPin[];
+} | null;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types crossing the RSC → client boundary. Decimals stripped to plain
@@ -134,6 +146,7 @@ export function ZoneAudit({
   quickPicks,
   componentTypes,
   severityLevels,
+  sitePlan,
 }: {
   auditId: string;
   systemId: string;
@@ -149,12 +162,15 @@ export function ZoneAudit({
   quickPicks: QuickPickRow[];
   componentTypes: ComponentTypeRow[];
   severityLevels: SeverityLevelRow[];
+  sitePlan: SitePlanData;
 }) {
   const router = useRouter();
   const [findings, setFindings] = useState<FindingRow[]>(initialFindings);
   const [draft, setDraft] = useState<FormDraft | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [pinPromptFindingId, setPinPromptFindingId] = useState<string | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
 
   // Severity buckets in display order (low → high). The config sheet locks
   // this to three; if any are missing for some reason, fall back to a sane
@@ -268,6 +284,9 @@ export function ZoneAudit({
         f.map((x) => (x.id === optimistic.id ? { ...x, id: saved.id } : x)),
       );
       toast.success("Finding added");
+      if (sitePlan) {
+        setPinPromptFindingId(saved.id);
+      }
       router.refresh();
     });
   }
@@ -313,8 +332,76 @@ export function ZoneAudit({
     });
   }
 
+  function confirmPin(x: number, y: number) {
+    if (!pinPromptFindingId || !sitePlan) return;
+    const findingId = pinPromptFindingId;
+    setPinPromptFindingId(null);
+    setShowPicker(false);
+    startTransition(async () => {
+      await fetch(`/api/findings/${findingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sitePlanX: x,
+          sitePlanY: y,
+          sitePlanFileId: sitePlan.fileId,
+        }),
+      });
+      router.refresh();
+    });
+  }
+
+  function skipPin() {
+    setPinPromptFindingId(null);
+    setShowPicker(false);
+  }
+
   return (
     <div className="flex flex-col gap-4">
+      {/* ── Site plan picker overlay ── */}
+      {showPicker && sitePlan && (
+        <SitePlanPicker
+          renderUrl={sitePlan.renderUrl}
+          width={sitePlan.width}
+          height={sitePlan.height}
+          existingPins={sitePlan.existingPins}
+          onConfirm={confirmPin}
+          onSkip={skipPin}
+        />
+      )}
+
+      {/* ── Pin prompt after saving a finding ── */}
+      {pinPromptFindingId && !showPicker && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
+          <Card className="mx-4 w-full max-w-sm">
+            <CardContent className="flex flex-col items-center gap-4 py-6">
+              <p className="text-center text-base font-medium">
+                Mark this finding on the site plan?
+              </p>
+              <div className="flex w-full gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  className="h-12 flex-1"
+                  onClick={skipPin}
+                >
+                  Skip
+                </Button>
+                <Button
+                  type="button"
+                  size="lg"
+                  className="h-12 flex-1"
+                  onClick={() => setShowPicker(true)}
+                >
+                  Mark Location
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* ── Header ── */}
       <div className="flex items-baseline justify-between gap-3">
         <div>

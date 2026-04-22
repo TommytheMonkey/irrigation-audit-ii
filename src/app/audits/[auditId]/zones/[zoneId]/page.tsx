@@ -33,7 +33,7 @@ export default async function ZoneAuditPage({
   // One round-trip via Promise.all. Reference data flows through the
   // org-scoped helpers so any rows the org has synced from their config sheet
   // override the global defaults entirely (see src/lib/config.ts).
-  const [audit, zone, siblings, findings, componentTypes, quickPicks, severityLevels] =
+  const [audit, zone, siblings, findings, componentTypes, quickPicks, severityLevels, sitePlan] =
     await Promise.all([
       db.audit.findFirst({
         where: { id: auditId, orgId: user.orgId },
@@ -71,9 +71,54 @@ export default async function ZoneAuditPage({
       getOrgComponentTypes(user.orgId),
       getOrgQuickPicks(user.orgId),
       getOrgSeverityLevels(user.orgId),
+      // Site plan for pin-on-map flow
+      db.propertyFile.findFirst({
+        where: {
+          property: { audits: { some: { id: auditId } } },
+          isFullSitePlan: true,
+        },
+        select: {
+          id: true,
+          blobUrl: true,
+          mimeType: true,
+          sitePlanRender: {
+            select: { renderUrl: true, width: true, height: true, status: true },
+          },
+        },
+      }),
     ]);
 
   if (!audit || !zone) notFound();
+
+  // Existing pinned findings across all zones in this audit — shown as
+  // context markers when the user pins a new finding on the site plan.
+  const existingPins = await db.auditFinding.findMany({
+    where: { auditId, sitePlanX: { not: null }, sitePlanY: { not: null } },
+    select: {
+      id: true,
+      sitePlanX: true,
+      sitePlanY: true,
+      severity: true,
+      zoneId: true,
+    },
+  });
+
+  const sitePlanForClient =
+    sitePlan?.sitePlanRender?.status === "READY"
+      ? {
+          fileId: sitePlan.id,
+          renderUrl: sitePlan.sitePlanRender.renderUrl,
+          width: sitePlan.sitePlanRender.width,
+          height: sitePlan.sitePlanRender.height,
+          existingPins: existingPins.map((p) => ({
+            id: p.id,
+            x: p.sitePlanX!,
+            y: p.sitePlanY!,
+            severity: p.severity,
+            isCurrentZone: p.zoneId === zoneId,
+          })),
+        }
+      : null;
 
   // Strip Decimal types for the client island — Prisma's Decimal isn't
   // serializable across the RSC → client boundary.
@@ -157,6 +202,7 @@ export default async function ZoneAuditPage({
           quickPicks={quickPickRows}
           componentTypes={componentTypeRows}
           severityLevels={severityLevelRows}
+          sitePlan={sitePlanForClient}
         />
       </main>
     </>
