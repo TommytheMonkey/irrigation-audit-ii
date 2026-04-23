@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
+import { MapPin } from "lucide-react";
 import { compressImage } from "@/lib/image-compress";
 import {
   clearDraft,
@@ -19,6 +20,7 @@ import {
   UnitOfMeasure,
   Severity,
   ZoneType,
+  type PinSource,
 } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,6 +29,10 @@ import {
   SitePlanPicker,
   type ExistingPin,
 } from "./site-plan-picker";
+import {
+  SatellitePinModal,
+  type LatLng,
+} from "@/components/map/satellite-pin-modal";
 
 export type SitePlanData = {
   fileId: string;
@@ -91,6 +97,12 @@ export type FindingRow = {
   description: string | null;
   notes: string | null;
   photoUrls: string[];
+  // Real-world map pin fields (null-coalesced client-side; see
+  // src/app/audits/.../page.tsx for the RSC→client mapping).
+  pinLat: number | null;
+  pinLng: number | null;
+  pinSource: PinSource | null;
+  pinPlacedAt: string | null;
 };
 
 // Default solution per issue type when the auditor builds a custom finding.
@@ -132,6 +144,12 @@ type FormDraft = {
   quantity: number;
   notes: string;
   photoUrls: string[];
+  // Real-world map pin — lat/lng captured from the satellite modal or
+  // GPS fallback. All four fields move together: null when unpinned.
+  pinLat: number | null;
+  pinLng: number | null;
+  pinSource: PinSource | null;
+  pinPlacedAt: string | null; // ISO
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -148,6 +166,8 @@ export function ZoneAudit({
   completed,
   propertyId,
   propertyName,
+  propertyLat,
+  propertyLng,
   navItems,
   initialFindings,
   quickPicks,
@@ -164,6 +184,8 @@ export function ZoneAudit({
   completed: boolean;
   propertyId: string;
   propertyName: string;
+  propertyLat: number | null;
+  propertyLng: number | null;
   navItems: ZoneNavItem[];
   initialFindings: FindingRow[];
   quickPicks: QuickPickRow[];
@@ -185,6 +207,10 @@ export function ZoneAudit({
   const [saving, setSaving] = useState(false);
   const [pinPromptFindingId, setPinPromptFindingId] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
+  // Real-world satellite pin modal state. Opens when the auditor taps
+  // "Drop pin" (or "Edit") in the LOCATION row of the draft form.
+  // Offline fallback (GPS) is wired in the next commit.
+  const [mapPinOpen, setMapPinOpen] = useState(false);
   // "What the user was trying to do when we interrupted them for the
   // unsaved-changes confirm" — determines where we navigate after a
   // Save/Discard choice.
@@ -292,6 +318,10 @@ export function ZoneAudit({
       quantity: 1,
       notes: "",
       photoUrls: [],
+      pinLat: null,
+      pinLng: null,
+      pinSource: null,
+      pinPlacedAt: null,
     };
     setDraft(d);
     setDraftInitial(d);
@@ -317,6 +347,10 @@ export function ZoneAudit({
       description: draft.label,
       notes: draft.notes || null,
       photoUrls: draft.photoUrls,
+      pinLat: draft.pinLat,
+      pinLng: draft.pinLng,
+      pinSource: draft.pinSource,
+      pinPlacedAt: draft.pinPlacedAt,
     };
     setFindings((f) => [optimistic, ...f]);
     const postedDraft = draft;
@@ -343,6 +377,10 @@ export function ZoneAudit({
         description: optimistic.description,
         notes: optimistic.notes,
         photoUrls: optimistic.photoUrls,
+        pinLat: optimistic.pinLat,
+        pinLng: optimistic.pinLng,
+        pinSource: optimistic.pinSource,
+        pinPlacedAt: optimistic.pinPlacedAt,
       }),
     });
     if (!res.ok) {
@@ -567,7 +605,10 @@ export function ZoneAudit({
           severityByEnum={severityByEnum}
           propertyId={propertyId}
           propertyName={propertyName}
+          propertyLat={propertyLat}
+          propertyLng={propertyLng}
           zoneNumber={zoneNumber}
+          onOpenPinModal={() => setMapPinOpen(true)}
         />
       ) : (
         <>
@@ -669,6 +710,31 @@ export function ZoneAudit({
           onSave={onConfirmSave}
           onDiscard={onConfirmDiscard}
           onCancel={onConfirmCancel}
+        />
+      )}
+
+      {/* ── Satellite pin modal ── */}
+      {mapPinOpen && draft && propertyLat !== null && propertyLng !== null && (
+        <SatellitePinModal
+          propertyCenter={{ lat: propertyLat, lng: propertyLng }}
+          initialPin={
+            draft.pinLat !== null && draft.pinLng !== null
+              ? { lat: draft.pinLat, lng: draft.pinLng }
+              : null
+          }
+          onCancel={() => setMapPinOpen(false)}
+          onSave={(coords: LatLng) => {
+            setDraft({
+              ...draft,
+              pinLat: coords.lat,
+              pinLng: coords.lng,
+              pinSource: "map",
+              pinPlacedAt: new Date().toISOString(),
+            });
+            setMapPinOpen(false);
+          }}
+          // GPS fallback link is wired in the next commit. Until then the
+          // modal just hides it (undefined → no link rendered).
         />
       )}
     </div>
@@ -795,7 +861,10 @@ function DraftPanel({
   severityByEnum,
   propertyId,
   propertyName,
+  propertyLat,
+  propertyLng,
   zoneNumber,
+  onOpenPinModal,
 }: {
   draft: FormDraft;
   setDraft: (d: FormDraft) => void;
@@ -806,7 +875,10 @@ function DraftPanel({
   severityByEnum: Map<Severity, SeverityLevelRow>;
   propertyId: string;
   propertyName: string;
+  propertyLat: number | null;
+  propertyLng: number | null;
   zoneNumber: number;
+  onOpenPinModal: () => void;
 }) {
   return (
     <Card className="border-primary/30 ring-2 ring-primary/20">
@@ -911,6 +983,15 @@ function DraftPanel({
           />
         </div>
 
+        {/* Location pin */}
+        <LocationRow
+          draft={draft}
+          setDraft={setDraft}
+          propertyLat={propertyLat}
+          propertyLng={propertyLng}
+          onOpenPinModal={onOpenPinModal}
+        />
+
         <div className="flex gap-2">
           <Button
             type="button"
@@ -933,6 +1014,83 @@ function DraftPanel({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function LocationRow({
+  draft,
+  setDraft,
+  propertyLat,
+  propertyLng,
+  onOpenPinModal,
+}: {
+  draft: FormDraft;
+  setDraft: (d: FormDraft) => void;
+  propertyLat: number | null;
+  propertyLng: number | null;
+  onOpenPinModal: () => void;
+}) {
+  const hasPin = draft.pinLat !== null && draft.pinLng !== null;
+  const canMap = propertyLat !== null && propertyLng !== null;
+
+  function removePin() {
+    setDraft({
+      ...draft,
+      pinLat: null,
+      pinLng: null,
+      pinSource: null,
+      pinPlacedAt: null,
+    });
+  }
+
+  return (
+    <div>
+      <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Location
+      </div>
+      {hasPin ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+            <MapPin className="h-4 w-4" />
+            Pinned
+            <span className="text-xs font-normal text-emerald-600/80 dark:text-emerald-400/70">
+              · {draft.pinSource === "gps" ? "GPS" : "Map"}
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={onOpenPinModal}
+            disabled={!canMap}
+            className="text-sm font-medium text-primary underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={removePin}
+            className="text-sm font-medium text-muted-foreground underline-offset-2 hover:text-destructive hover:underline"
+          >
+            Remove
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onOpenPinModal}
+          disabled={!canMap}
+          className="inline-flex items-center gap-2 rounded-full border border-zinc-300 bg-white px-3.5 py-2 text-sm font-medium shadow-sm transition-colors hover:border-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900"
+          aria-label="Drop pin"
+        >
+          <MapPin className="h-4 w-4" />
+          Drop pin
+        </button>
+      )}
+      {!canMap && (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Property needs lat/lng to use the satellite map.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -1218,6 +1376,10 @@ function CustomBuilder({
                       quantity: 1,
                       notes: "",
                       photoUrls: [],
+                      pinLat: null,
+                      pinLng: null,
+                      pinSource: null,
+                      pinPlacedAt: null,
                     });
                     // Reset for the next custom build.
                     setStage("category");
@@ -1283,6 +1445,14 @@ function FindingCard({
               qty {finding.quantity ?? 1} {finding.unitOfMeasure}
             </span>
             <span>· {finding.solutionAction}</span>
+            {finding.pinLat !== null && finding.pinLng !== null && (
+              <span
+                className="inline-flex items-center gap-0.5 text-emerald-700 dark:text-emerald-400"
+                title={`Pinned · ${finding.pinSource === "gps" ? "GPS" : "Map"}`}
+              >
+                <MapPin className="h-3 w-3" />
+              </span>
+            )}
           </div>
         </div>
         <button

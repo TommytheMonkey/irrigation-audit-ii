@@ -39,7 +39,14 @@ export default async function ZoneAuditPage({
         where: { id: auditId, orgId: user.orgId },
         select: {
           id: true,
-          property: { select: { id: true, name: true } },
+          property: {
+            select: {
+              id: true,
+              name: true,
+              latitude: true,
+              longitude: true,
+            },
+          },
         },
       }),
       db.auditZone.findFirst({
@@ -135,6 +142,10 @@ export default async function ZoneAuditPage({
     description: f.description,
     notes: f.notes,
     photoUrls: f.photoUrls,
+    pinLat: f.pinLat,
+    pinLng: f.pinLng,
+    pinSource: f.pinSource,
+    pinPlacedAt: f.pinPlacedAt ? f.pinPlacedAt.toISOString() : null,
   }));
 
   const navItems: ZoneNavItem[] = siblings.map((s) => ({
@@ -197,6 +208,8 @@ export default async function ZoneAuditPage({
           completed={zone.completedAt !== null}
           propertyId={audit.property.id}
           propertyName={audit.property.name}
+          propertyLat={audit.property.latitude}
+          propertyLng={audit.property.longitude}
           navItems={navItems}
           initialFindings={findingsForClient}
           quickPicks={quickPickRows}
