@@ -25,22 +25,38 @@ The full original build spec is in **`prompts/initial-prompt.md`**.
 | UI | shadcn/ui (base-nova preset = Base UI) + Tailwind v4 |
 | ORM | Prisma 7 + `@prisma/adapter-pg` |
 | Database | Neon Postgres (pooled @ runtime, direct @ migrations) |
-| Auth | Custom JWT + email magic-link (planned, not built) |
-| External | Monday.com GraphQL API, Google OAuth + Sheets + Drive (planned) |
-| Deploy | Vercel (planned) |
+| Auth | Custom JWT session + email magic-link (built — `src/lib/auth.ts`) |
+| Email | AgentMail (prod) / console logger (dev) — `src/lib/email.ts` |
+| File storage | Vercel Blob for audit photos + site-plan renders |
+| Testing | Vitest (unit) — `npm test`. No e2e yet; Playwright is a TODO. |
+| External | Monday.com GraphQL API, Google OAuth + Sheets + Drive |
+| Deploy | Vercel |
 
 ## Repo layout
 
 ```
 src/
   app/                # Next.js App Router pages, layouts, route handlers
+    auth/confirm/     # Intermediate magic-link page (GET-safe, keeps
+                      # link previewers from burning tokens)
+    api/auth/         # magic-link, verify (POST), logout, me, google,
+                      # dev-login (env-gated shortcut)
   components/ui/      # shadcn-generated components
-  lib/db.ts           # Prisma client singleton (uses pg adapter)
+  lib/
+    auth.ts           # JWT session + magic-link signing/verification
+    bot-ua.ts         # Bot UA detection used by verify endpoint
+    db.ts             # Prisma client singleton (uses pg adapter)
+    email.ts          # sendEmail() — AgentMail in prod, console in dev
+    finding-draft.ts  # localStorage persistence + dirty-check for the
+                      # in-progress finding form on the zone screen
+    report-pdf.tsx    # @react-pdf/renderer PDF template
+    sheet-export.ts   # Google Sheets export payload builder
 prisma/
   schema.prisma       # Data model — see §"Data model" below
   seed.ts             # Idempotent global reference seed (run via `npm run db:seed`)
+  seed-demo.ts        # Demo data — Strata Landscape org + Tyler Demo user + properties
 prisma.config.ts      # Prisma 7 datasource + migrations adapter config
-.env                  # DATABASE_URL + DIRECT_URL (gitignored)
+.env                  # DATABASE_URL + DIRECT_URL + JWT_SECRET + …  (gitignored)
 reference/            # Original Tyler material — domain ground truth
 REFERENCE_NOTES.md    # Distilled taxonomy from reference/ — READ THIS
 prompts/              # Original build prompts
@@ -59,12 +75,21 @@ npm run db:push
 # Seed global reference data (component types, quick-pick findings)
 npm run db:seed
 
+# Seed demo data (Strata org + Tyler Demo user + 3 properties)
+npm run db:seed:demo
+
 # Dev server
 npm run dev
+
+# Unit tests
+npm test              # one-shot
+npm run test:watch    # watch mode
 
 # Open Prisma Studio to inspect Neon directly
 npm run db:studio
 ```
+
+Dev login shortcut: set `DEV_AUTO_LOGIN=<email>` in `.env`. The login page will show a "Dev login as …" button that hits `/api/auth/dev-login`. Only active when `NODE_ENV !== "production"`.
 
 ## Data model (see prisma/schema.prisma + REFERENCE_NOTES.md)
 
@@ -72,9 +97,11 @@ Hierarchy: **Org → Property → Audit → AuditSystem → AuditZone → AuditF
 
 Critical: a property has **1..N irrigation systems**, each with its own controller and zones. The `audit_systems` table is non-negotiable — system-level findings (mainline break, controller dead, backflow status) attach to a system, not a zone. `audit_findings.zone_id` is nullable for that reason; `system_id` is always set.
 
-Multi-tenant scoping: every primary table (`properties`, `audits`, `users`, etc.) carries `org_id`. Reference tables (`component_types`, `quick_pick_findings`) use `org_id = NULL` for global defaults; orgs can add their own overrides on top.
+Multi-tenant scoping: every primary table (`properties`, `audits`, `users`, etc.) carries `org_id`. Reference tables (`component_types`, `quick_pick_findings`, `severity_levels`) use `org_id = NULL` for global defaults; orgs can add their own overrides on top.
 
-Severity defaults are seeded per `IssueType` (REFERENCE_NOTES.md §3) and overridable per finding. There's no real scoring rubric in the reference material — when scoring lands in a report, it'll be a derived count-weighted score, not from any external source.
+Severity defaults are seeded per `IssueType` (REFERENCE_NOTES.md §3) and overridable per finding. There's no external scoring rubric; when scoring lands in a report, it'll be a derived count-weighted score.
+
+Auth tables: `users`, `orgs`, `magic_tokens` (single-use, TTL 15m, tracked by `jti`). Session is a JWT in an httpOnly cookie, 7-day TTL. Domain-based org resolution on first sign-in (existing org with matching `emailDomain` → auditor; no match → new org, user = admin).
 
 UOM quirk: drip tubing and field wire use `sf` (square feet) even though they're linear. **Preserve this** — it matches the reports Tyler's team already uses.
 
@@ -86,51 +113,52 @@ UOM quirk: drip tubing and field wire use `sf` (square feet) even though they're
 - **`tsx` for scripts** — when running standalone scripts that use Prisma, use `tsx --env-file=.env <script>` so the env loads.
 - **Reference seed is wipe-and-reseed for `org_id = NULL` rows.** Prisma can't `upsert` against a unique key with a nullable column. The `deleteMany({ where: { orgId: null } })` + `create` pattern is intentional.
 - **Quick-picks come from the Austin Oaks paper form** (REFERENCE_NOTES.md §7). Each is a one-tap shortcut pre-mapped to (issue, component, solution, severity, UOM).
-- **No git repo yet.** The Next.js scaffold tried to init one but I excluded it during the move so the existing files (REFERENCE_NOTES.md, reference/, etc.) wouldn't be hidden by an auto-commit. `git init` is a deliberate next step.
+- **Magic-link emails link to `/auth/confirm?token=…`, not `/api/auth/verify` directly.** That intermediate page exists because Gmail/Slack/iMessage prefetch URLs to render link previews, which burned the one-time token before the user clicked. The token is only consumed on an explicit POST from the Continue button, and the POST handler also rejects known bot UAs as belt-and-suspenders.
+- **In-progress finding drafts are persisted to localStorage** (`src/lib/finding-draft.ts`), keyed `audit-draft:<auditId>:<zoneId>`. Restored on mount; cleared on save/discard; purged wholesale on audit completion. `beforeunload` guards tab close / refresh; in-app navigation is intercepted by an unsaved-changes confirm sheet.
 - **`pg` SSL deprecation warning** — current pg version warns that `sslmode=require` will change semantics in v3.0.0/v9.0.0. Either pin pg or update the connection string to `sslmode=verify-full` before the bump. Tracking but not urgent.
 
 ## Active branch / worktree notes
 
-- No git yet (see above).
+- Git is set up (`git@github.com:TommytheMonkey/irrigation-audit-ii`). Main is deploy-tracking; feature work happens on branches or worktrees.
 - Future feature work: worktrees under `~/worktrees/irrigation-audit-<feature>` per Tommy's standard pattern.
 
-## What's built (as of 2026-04-09)
+## What's built (as of 2026-04-23)
 
 - ✅ Reference catalog (`REFERENCE_NOTES.md`)
 - ✅ Next.js 16 + TS + Tailwind v4 + shadcn/ui (base-nova) scaffold
 - ✅ Prisma 7 + `@prisma/adapter-pg` wired to Neon
-- ✅ Full schema pushed to Neon (orgs, users, properties, audits, audit_systems, audit_zones, audit_findings, audit_scores, component_types, quick_pick_findings)
-- ✅ Reference seed (18 component types, 31 quick-picks)
-- ✅ Demo seed (`npm run db:seed:demo`) — Strata Landscape org + Tyler Demo user + 3 properties
-- ✅ Dev auth stub (`src/lib/auth-dev.ts`) — hardcodes the current user. Search for `auth-dev` / `DEV-ONLY` to find every caller before shipping.
-- ✅ Mobile-first audit flow (Milestone D):
-  - `/` dashboard with property cards
-  - `/properties/[id]` property detail + audit history
+- ✅ Full schema (orgs, users, magic_tokens, properties, property_systems / controllers / zones / water_sources / parts / files, site_plan_renders, audits, audit_systems, audit_zones, audit_findings, audit_scores, component_types, quick_pick_findings, severity_levels)
+- ✅ Reference seed + demo seed (`npm run db:seed:demo` — Strata Landscape org + Tyler Demo user + 3 properties)
+- ✅ **Auth** — email magic-link + JWT session (`src/lib/auth.ts`, `/api/auth/magic-link`, `/api/auth/verify` POST, `/auth/confirm` intermediate page). Domain-based org resolution on first sign-in. Dev-login shortcut behind `DEV_AUTO_LOGIN` env var.
+- ✅ Onboarding wizard (`/onboarding`) — company, Monday, Google, branding, done
+- ✅ Settings (`/settings`) — company, integrations (Monday + Google), users, config tabs; Drive folder picker; property import card
+- ✅ Mobile-first audit flow:
+  - `/` dashboard with property cards + Monday sync banner
+  - `/properties/[id]` property detail + audit history + files + zones + site plan
   - `/audits/new?propertyId=…` confirm + (optional) copy zones from last audit
-  - `/audits/[id]` audit hub: zone list + inline add-zone form + complete audit
-  - `/audits/[id]/zones/[id]` THE BIG ONE — quick-pick chips, custom finding wizard, severity buttons, quantity stepper, photo upload, optimistic finding list, zone pill nav
+  - `/audits/[id]` audit hub: zone list + inline add-zone form + **Complete Audit (with confirm dialog + unsaved-draft warning)**
+  - `/audits/[id]/zones/[id]` THE BIG ONE — quick-pick chips, custom finding wizard, severity buttons, quantity stepper, photo upload, optimistic finding list, zone pill nav, site-plan pin placer, **unsaved-changes sheet + localStorage draft persistence**
   - `/audits/[id]/summary` severity stats, by-category breakdown, zone-by-zone findings
-- ✅ API routes: `/api/audits`, `/api/audits/[id]`, `/api/audits/[id]/zones`, `/api/zones/[id]`, `/api/findings`, `/api/findings/[id]`, `/api/upload` (dev-only — writes to `public/uploads/`)
+- ✅ API routes: `/api/audits`, `/api/audits/[id]` (incl. PATCH to complete), `/api/audits/[id]/zones`, `/api/zones/[id]`, `/api/findings`, `/api/findings/[id]`, `/api/audit-photos` (Vercel Blob), `/api/upload` (dev-only — writes to `public/uploads/`), `/api/properties`, `/api/property-systems`, `/api/property-controllers`, `/api/property-zones`, `/api/property-water-sources`, `/api/property-parts`, `/api/property-files`, `/api/monday`, `/api/config`, `/api/onboarding`, `/api/settings`
+- ✅ Monday.com property sync (`/api/monday/*`)
+- ✅ Google OAuth + Drive + Sheets integration (onboarding Google step + sheet export pipeline)
+- ✅ PDF report generation (`src/lib/report-pdf.tsx`, via `@react-pdf/renderer`) — invoked per property system
+- ✅ Audit photos on Vercel Blob (`@vercel/blob`, `/api/audit-photos`)
+- ✅ Google Sheets export (`src/lib/sheet-export.ts` + route handler) — Summary, All Findings, By Zone, Pricing Summary tabs with formatting
+- ✅ Unit tests (Vitest) — `src/lib/finding-draft.test.ts`, `src/lib/bot-ua.test.ts`, `src/__tests__/nav-links.test.ts`
 
 ## What's NOT built
 
-- Auth (magic-link / JWT)  ← currently stubbed via `auth-dev.ts`
-- Onboarding wizard (Monday API key, Google OAuth, branding)
-- Property sync from Monday.com
-- Multi-system UI (audit hub assumes one system per audit; system layer exists in schema)
-- Edit existing finding (only add + delete in v1)
-- Photo upload on Vercel — `/api/upload` writes to disk, won't work in prod. Swap for Vercel Blob.
-- Google Sheets sync
-- Price sync back from sheets
-- PDF report generation
-- Settings / admin
-- Offline support (service worker + IndexedDB queue)
+- Price sync back from sheets (estimator → auditor read-back of unit costs)
+- Edit existing finding (only add + delete in v1 — tap-to-edit is a TODO)
+- Offline support (no service worker, no IndexedDB queue; the app is online-only today)
+- Playwright e2e coverage for the audit flow (ticket filed in `TODO.md` — add it if you touch the audit flow)
+- In-app push notifications for price-back events
 
-See `prompts/initial-prompt.md` step-by-step for the full plan.
+See `prompts/initial-prompt.md` step-by-step for the full historical plan.
 
 ## Out of scope for Claude (without explicit ask)
 
 - Don't touch `reference/` — read-only ground truth.
 - Don't touch `junk/` — deprecated Python template, kept for paranoia.
-- Don't `git init` or commit anything without being asked.
-- Don't add new top-level dependencies (auth libs, PDF libs, etc.) without flagging the choice first.
+- Don't add new top-level dependencies (auth libs, PDF libs, state libs, etc.) without flagging the choice first.
