@@ -1501,6 +1501,7 @@ function FindingCard({
             )}
           </div>
         </div>
+        <PinThumbnail finding={finding} />
         <button
           type="button"
           onClick={onDelete}
@@ -1511,5 +1512,40 @@ function FindingCard({
         </button>
       </CardContent>
     </Card>
+  );
+}
+
+function PinThumbnail({ finding }: { finding: FindingRow }) {
+  const [errored, setErrored] = useState(false);
+  const hasPin = finding.pinLat !== null && finding.pinLng !== null;
+  if (!hasPin) return null;
+
+  // Optimistic findings haven't been persisted yet — the proxy would
+  // 404 since it joins on auditId → orgId in the DB. Show the text
+  // placeholder until the server ID lands.
+  const isSaved = !finding.id.startsWith("tmp-");
+
+  if (!isSaved || errored) {
+    return (
+      <div className="flex h-[60px] w-20 shrink-0 flex-col items-center justify-center gap-0.5 rounded-md border border-zinc-200 bg-zinc-50 px-1 text-[10px] text-muted-foreground dark:border-zinc-800 dark:bg-zinc-900/60">
+        <MapPin className="h-4 w-4 text-emerald-600" />
+        <span className="font-semibold uppercase">
+          {finding.pinSource === "gps" ? "GPS" : "Map"}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`/api/maps/static-thumbnail?findingId=${encodeURIComponent(finding.id)}`}
+      alt="Pin location"
+      width={80}
+      height={60}
+      loading="lazy"
+      onError={() => setErrored(true)}
+      className="h-[60px] w-20 shrink-0 rounded-md border border-zinc-200 object-cover dark:border-zinc-800"
+    />
   );
 }
