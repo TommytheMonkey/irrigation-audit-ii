@@ -33,6 +33,7 @@ import {
   SatellitePinModal,
   type LatLng,
 } from "@/components/map/satellite-pin-modal";
+import { GpsCaptureSheet } from "@/components/map/gps-capture-sheet";
 
 export type SitePlanData = {
   fileId: string;
@@ -207,10 +208,21 @@ export function ZoneAudit({
   const [saving, setSaving] = useState(false);
   const [pinPromptFindingId, setPinPromptFindingId] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
-  // Real-world satellite pin modal state. Opens when the auditor taps
-  // "Drop pin" (or "Edit") in the LOCATION row of the draft form.
-  // Offline fallback (GPS) is wired in the next commit.
+  // Pin-drop flow state.
+  //
+  //   mapPinOpen   → satellite modal (requires network).
+  //   gpsSheetOpen → GPS capture sheet (works offline).
+  //
+  // Entry points: "Drop pin" button in the LOCATION row routes to the
+  // satellite modal when online and the GPS sheet when offline; the
+  // satellite modal's "Or use my current location" link also opens the
+  // GPS sheet. We cache `gpsContext` so the sheet knows whether to
+  // frame itself as the primary offline flow or a secondary option.
   const [mapPinOpen, setMapPinOpen] = useState(false);
+  const [gpsSheetOpen, setGpsSheetOpen] = useState(false);
+  const [gpsContext, setGpsContext] = useState<"offline" | "fromMap">(
+    "offline",
+  );
   // "What the user was trying to do when we interrupted them for the
   // unsaved-changes confirm" — determines where we navigate after a
   // Save/Discard choice.
@@ -608,7 +620,17 @@ export function ZoneAudit({
           propertyLat={propertyLat}
           propertyLng={propertyLng}
           zoneNumber={zoneNumber}
-          onOpenPinModal={() => setMapPinOpen(true)}
+          onOpenPinModal={() => {
+            // Offline? Satellite tiles won't load — go straight to GPS.
+            const isOnline =
+              typeof navigator === "undefined" ? true : navigator.onLine;
+            if (!isOnline) {
+              setGpsContext("offline");
+              setGpsSheetOpen(true);
+              return;
+            }
+            setMapPinOpen(true);
+          }}
         />
       ) : (
         <>
@@ -733,8 +755,32 @@ export function ZoneAudit({
             });
             setMapPinOpen(false);
           }}
-          // GPS fallback link is wired in the next commit. Until then the
-          // modal just hides it (undefined → no link rendered).
+          onUseMyLocation={() => {
+            // Bounce out of the modal into the GPS sheet. Some techs
+            // prefer GPS even online — standing on the defect is more
+            // accurate than eyeballing roof-level satellite imagery.
+            setMapPinOpen(false);
+            setGpsContext("fromMap");
+            setGpsSheetOpen(true);
+          }}
+        />
+      )}
+
+      {/* ── GPS capture sheet ── */}
+      {gpsSheetOpen && draft && (
+        <GpsCaptureSheet
+          isOffline={gpsContext === "offline"}
+          onCancel={() => setGpsSheetOpen(false)}
+          onSave={(coords) => {
+            setDraft({
+              ...draft,
+              pinLat: coords.lat,
+              pinLng: coords.lng,
+              pinSource: "gps",
+              pinPlacedAt: new Date().toISOString(),
+            });
+            setGpsSheetOpen(false);
+          }}
         />
       )}
     </div>
