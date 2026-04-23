@@ -7,7 +7,7 @@
 // tap-to-place on mobile. We also accept taps and allow dragging the
 // marker for folks who want pixel control.
 //
-// Requires NEXT_PUBLIC_GOOGLE_MAPS_API_KEY. If the property has no
+// Requires NEXT_PUBLIC_MAPS_API. If the property has no
 // geocoded lat/lng, the caller should route to the GPS fallback
 // instead (the map would have nowhere to center).
 
@@ -38,7 +38,7 @@ export function SatellitePinModal({
   // useGeolocation hook; in this commit the parent supplies it.
   onUseMyLocation?: () => void;
 }) {
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const apiKey = process.env.NEXT_PUBLIC_MAPS_API;
 
   // The working pin position. Starts at initialPin if editing, else
   // at the property center (the crosshair is over the center).
@@ -233,7 +233,7 @@ function MissingKeyDialog({ onCancel }: { onCancel: () => void }) {
       <div className="max-w-sm rounded-xl bg-background p-5 text-sm">
         <p className="font-semibold">Map unavailable</p>
         <p className="mt-1 text-muted-foreground">
-          NEXT_PUBLIC_GOOGLE_MAPS_API_KEY isn&rsquo;t set. Ask an admin
+          NEXT_PUBLIC_MAPS_API isn&rsquo;t set. Ask an admin
           to add it in Vercel, then reload.
         </p>
         <Button
