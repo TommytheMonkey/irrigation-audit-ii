@@ -6,6 +6,7 @@ import {
   setSessionCookie,
 } from "@/lib/auth";
 import { isBotUserAgent } from "@/lib/bot-ua";
+import { seedSampleProject } from "@/lib/sample-seed";
 
 // POST /api/auth/verify
 //
@@ -99,6 +100,15 @@ export async function POST(req: Request) {
         },
         include: { org: true },
       });
+      // Give first-time orgs a realistic sample property to explore
+      // instead of an empty dashboard. Wrapped in try/catch so a seed
+      // glitch never blocks the sign-in — worst case the user lands
+      // on an empty dashboard and we log the error server-side.
+      try {
+        await seedSampleProject(db, newOrg.id, user.id);
+      } catch (e) {
+        console.warn("[sample-seed] failed for new org", newOrg.id, e);
+      }
     }
   }
 
