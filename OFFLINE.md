@@ -34,6 +34,14 @@ risk-managed slices:
   live in IndexedDB (table: `drafts`, keyed `audit:zone`). Any
   localStorage drafts from a pre-Phase-1 build are migrated once on
   app load — see `src/lib/offline/migrate.ts`.
+- **GPS pin capture works offline.** When the auditor taps "Drop pin"
+  on a finding and the device has no signal, the satellite modal is
+  skipped and a GPS capture sheet opens directly. `navigator.geolocation`
+  doesn't need the network — only the satellite tiles do. Captured
+  coords (`pinSource: "gps"`) are written to the draft, which is
+  already auto-persisted to IndexedDB via Phase 1's draft layer. See
+  `src/lib/hooks/use-geolocation.ts` and
+  `src/components/map/gps-capture-sheet.tsx`.
 
 ## What's NOT offline yet
 
@@ -44,6 +52,15 @@ risk-managed slices:
   POST/PATCH/DELETE and replay on reconnect.
 - **Photos offline.** Image uploads need network and Vercel Blob.
   The Download bundle skips photos. Phase 3 adds a local image cache.
+- **Satellite pin placement offline.** The satellite modal streams
+  live tiles from Google and can't work offline. Offline, tapping
+  "Drop pin" routes straight to the GPS sheet (see above). Once
+  back online, the tech can use the satellite view normally.
+- **Per-finding pin thumbnails offline.** The thumbnails served from
+  `/api/maps/static-thumbnail` need network (and the 7-day CDN cache
+  only covers previously-viewed thumbnails). Offline, finding rows
+  fall back to a text-only `📍 GPS` / `📍 Map` pill so the auditor
+  still knows which findings are pinned.
 - **Fresh reads from IndexedDB when offline.** Pages that you haven't
   visited online and haven't downloaded will fail to load when
   offline — the service worker has nothing to serve. The spec flagged

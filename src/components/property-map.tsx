@@ -22,7 +22,7 @@ import type { PropertyListItem } from "@/app/property-list";
 const MAP_ID = "irrigation-audit-map";
 
 export function PropertyMap({ properties }: { properties: PropertyListItem[] }) {
-  const apiKey = process.env.NEXT_PUBLIC_MAPS_API;
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   const mappable = useMemo(
     () =>
@@ -37,7 +37,7 @@ export function PropertyMap({ properties }: { properties: PropertyListItem[] }) 
   if (!apiKey) {
     return (
       <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-        Map disabled: <code>NEXT_PUBLIC_MAPS_API</code> isn&apos;t set.
+        Map disabled: <code>NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> isn&apos;t set.
       </div>
     );
   }

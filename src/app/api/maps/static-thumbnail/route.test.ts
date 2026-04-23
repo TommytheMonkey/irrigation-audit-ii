@@ -83,10 +83,9 @@ describe("GET /api/maps/static-thumbnail", () => {
       orgId: "org1",
       org: { id: "org1", name: "X", onboardingComplete: true },
     });
-    vi.mocked(db.auditFinding.findFirst).mockResolvedValue({
-      pinLat: null,
-      pinLng: null,
-    } as { pinLat: number | null; pinLng: number | null });
+    vi.mocked(db.auditFinding.findFirst).mockResolvedValue(
+      { pinLat: null, pinLng: null } as never,
+    );
 
     const res = await GET(makeRequest("?findingId=f1"));
     expect(res.status).toBe(422);
@@ -102,10 +101,9 @@ describe("GET /api/maps/static-thumbnail", () => {
       orgId: "org1",
       org: { id: "org1", name: "X", onboardingComplete: true },
     });
-    vi.mocked(db.auditFinding.findFirst).mockResolvedValue({
-      pinLat: 30.25,
-      pinLng: -97.75,
-    } as { pinLat: number | null; pinLng: number | null });
+    vi.mocked(db.auditFinding.findFirst).mockResolvedValue(
+      { pinLat: 30.25, pinLng: -97.75 } as never,
+    );
 
     const res = await GET(makeRequest("?findingId=f1"));
     expect(res.status).toBe(500);
@@ -122,10 +120,9 @@ describe("GET /api/maps/static-thumbnail", () => {
       orgId: "org1",
       org: { id: "org1", name: "X", onboardingComplete: true },
     });
-    vi.mocked(db.auditFinding.findFirst).mockResolvedValue({
-      pinLat: 30.25,
-      pinLng: -97.75,
-    } as { pinLat: number | null; pinLng: number | null });
+    vi.mocked(db.auditFinding.findFirst).mockResolvedValue(
+      { pinLat: 30.25, pinLng: -97.75 } as never,
+    );
 
     const fakeImage = new Uint8Array([0x89, 0x50, 0x4e, 0x47]); // PNG magic
     const fetchSpy = vi

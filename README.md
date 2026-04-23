@@ -184,7 +184,8 @@ Everything lives in `.env` locally (gitignored) and in the Vercel project env va
 | `ANTHROPIC_API_KEY` | Claude API (Magic Fill, document/photo extraction, report content if ever used) |
 | `AGENTMAIL_API_KEY` | Transactional email (magic links, invites) |
 | `AGENTMAIL_INBOX_ID` | Sending inbox on AgentMail |
-| `NEXT_PUBLIC_MAPS_API` | Google Maps JS API + Geocoding API key — restricted to the app's domain in Cloud Console |
+| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | Browser-side Google Maps JS + Geocoding API key — referrer-restricted to the app's domain in Cloud Console. (Formerly `NEXT_PUBLIC_MAPS_API` — renamed on the map-pins branch; update Vercel + `.env.local` to match.) |
+| `GOOGLE_MAPS_SERVER_API_KEY` | Server-side Static Maps API key used by `/api/maps/static-thumbnail` to render per-finding pin thumbnails. IP-restricted, not referrer-restricted — keep off the client. |
 | `GOOGLE_CLIENT_ID` | OAuth client for Drive + Sheets |
 | `GOOGLE_CLIENT_SECRET` | Paired with the above |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob access. **Auto-provisioned by Vercel when a Blob store is connected** — don't set manually. |
