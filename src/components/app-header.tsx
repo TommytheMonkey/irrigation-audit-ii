@@ -2,6 +2,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { SignOutButton } from "./sign-out-button";
+import { OfflineIndicator } from "./offline-indicator";
 
 export async function AppHeader() {
   const user = await getCurrentUser();
@@ -45,7 +46,8 @@ export async function AppHeader() {
           </div>
         </Link>
 
-        <nav className="flex items-center gap-4 sm:gap-6">
+        <nav className="flex items-center gap-3 sm:gap-5">
+          <OfflineIndicator />
           <SignOutButton />
           <Link
             href="/settings"
