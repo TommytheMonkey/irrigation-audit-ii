@@ -102,6 +102,14 @@ enum SetupStatus {
   CONFIGURED
 }
 
+// Source of a finding's real-world pin location. "map" = auditor placed it
+// on the satellite modal; "gps" = captured via navigator.geolocation in the
+// field. Null when no pin is set.
+enum PinSource {
+  map
+  gps
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tenancy
 // ─────────────────────────────────────────────────────────────────────────────
@@ -588,6 +596,13 @@ model AuditFinding {
   sitePlanX         Float?         @map("site_plan_x")
   sitePlanY         Float?         @map("site_plan_y")
   sitePlanFileId    String?        @map("site_plan_file_id")
+  // Real-world map pin — lat/lng captured from the satellite map modal or
+  // the GPS fallback. Independent of sitePlan fields; a finding can have
+  // both (legacy site-plan pin) or just the new map pin, or neither.
+  pinLat            Float?         @map("pin_lat")
+  pinLng            Float?         @map("pin_lng")
+  pinSource         PinSource?     @map("pin_source")
+  pinPlacedAt       DateTime?      @map("pin_placed_at")
   // Pricing — filled in by the estimator after Google Sheets handoff
   unitPrice         Decimal?       @db.Decimal(10, 2) @map("unit_price")
   extPrice          Decimal?       @db.Decimal(10, 2) @map("ext_price")

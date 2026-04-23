@@ -7,6 +7,7 @@ import type {
   Severity,
   CostModel,
   UnitOfMeasure,
+  PinSource,
 } from "@prisma/client";
 
 // POST /api/findings — create a finding on a zone (or system-only).
@@ -14,7 +15,8 @@ import type {
 //   auditId, systemId, zoneId?,
 //   issueType, componentCategory, componentSubtype?, componentSize?,
 //   severity, solutionAction, costModel?, quantity?, unitOfMeasure?,
-//   description?, notes?, photoUrls?
+//   description?, notes?, photoUrls?,
+//   pinLat?, pinLng?, pinSource?, pinPlacedAt?
 // }
 export async function POST(req: Request) {
   const user = await getCurrentUser();
@@ -37,6 +39,10 @@ export async function POST(req: Request) {
     description?: string | null;
     notes?: string | null;
     photoUrls?: string[];
+    pinLat?: number | null;
+    pinLng?: number | null;
+    pinSource?: PinSource | null;
+    pinPlacedAt?: string | null;
   };
 
   // Tenancy check: ensure the audit belongs to this org.
@@ -65,6 +71,12 @@ export async function POST(req: Request) {
       description: body.description ?? null,
       notes: body.notes ?? null,
       photoUrls: body.photoUrls ?? [],
+      // Pin fields — all four move together. If any is set we write the
+      // group; if none are set the columns stay NULL.
+      pinLat: body.pinLat ?? null,
+      pinLng: body.pinLng ?? null,
+      pinSource: body.pinSource ?? null,
+      pinPlacedAt: body.pinPlacedAt ? new Date(body.pinPlacedAt) : null,
     },
   });
   return NextResponse.json(finding);
