@@ -19,6 +19,7 @@ import type {
 import { SystemFiles } from "./system-files";
 import { PropertyFiles } from "./property-files";
 import { SetupFromDrawings } from "./setup-from-drawings";
+import { OfflineDownloadButton } from "@/components/offline-download-button";
 import { compressImage } from "@/lib/image-compress";
 import {
   Card,
@@ -117,6 +118,9 @@ export function PropertyProfile({
                     .join(", ")}
                 </CardDescription>
               )}
+            </div>
+            <div className="shrink-0">
+              <OfflineDownloadButton propertyId={property.id} />
             </div>
           </div>
         </CardHeader>

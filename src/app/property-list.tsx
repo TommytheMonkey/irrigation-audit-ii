@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
 import {
   Card,
   CardHeader,
@@ -15,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatRelative } from "@/lib/format";
 import { PropertyMap } from "@/components/property-map";
+import { offlineDb } from "@/lib/offline/db";
 import {
   Search,
   LayoutGrid,
@@ -24,6 +26,7 @@ import {
   User,
   ClipboardList,
   Plus,
+  CloudDownload,
 } from "lucide-react";
 
 type AuditLite = {
@@ -65,6 +68,19 @@ export function PropertyList({ properties }: { properties: PropertyListItem[] })
   const [pmFilter, setPmFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<AuditStatusFilter>("all");
   const [syncFilter, setSyncFilter] = useState<SyncFilter>("all");
+
+  // Set of property ids that have an offline copy in IndexedDB. Reactive
+  // — when the auditor taps "Download for offline" on a detail page,
+  // this set updates without a nav and the "Offline" badge appears
+  // immediately on the matching card.
+  const downloadedIds = useLiveQuery(
+    async () => {
+      const rows = await offlineDb.properties.toArray();
+      return new Set(rows.map((r) => r.id));
+    },
+    [],
+    new Set<string>(),
+  );
 
   const pmOptions = useMemo(() => {
     const set = new Set<string>();
@@ -199,7 +215,11 @@ export function PropertyList({ properties }: { properties: PropertyListItem[] })
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map((p) => (
-            <PropertyCard key={p.id} property={p} />
+            <PropertyCard
+              key={p.id}
+              property={p}
+              offlineReady={downloadedIds.has(p.id)}
+            />
           ))}
         </div>
       )}
@@ -289,7 +309,13 @@ function FilterSelect({
   );
 }
 
-function PropertyCard({ property: p }: { property: PropertyListItem }) {
+function PropertyCard({
+  property: p,
+  offlineReady,
+}: {
+  property: PropertyListItem;
+  offlineReady: boolean;
+}) {
   const latest = p.audits[0];
   return (
     // `min-w-0` on the Card itself is critical: CSS Grid items default to
@@ -314,6 +340,15 @@ function PropertyCard({ property: p }: { property: PropertyListItem }) {
             {p.mondayItemId && (
               <span className="max-w-full truncate rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-600">
                 Monday
+              </span>
+            )}
+            {offlineReady && (
+              <span
+                className="inline-flex max-w-full items-center gap-1 truncate rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400"
+                title="Offline copy saved"
+              >
+                <CloudDownload className="h-3 w-3" />
+                Offline
               </span>
             )}
           </div>
