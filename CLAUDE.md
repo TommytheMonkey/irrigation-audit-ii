@@ -28,6 +28,7 @@ The full original build spec is in **`prompts/initial-prompt.md`**.
 | Auth | Custom JWT session + email magic-link (built — `src/lib/auth.ts`) |
 | Email | AgentMail (prod) / console logger (dev) — `src/lib/email.ts` |
 | File storage | Vercel Blob for audit photos + site-plan renders |
+| Offline (Phase 1) | Service worker (`@serwist/next`) + IndexedDB (Dexie) — see `OFFLINE.md` |
 | Testing | Vitest (unit) — `npm test`. No e2e yet; Playwright is a TODO. |
 | External | Monday.com GraphQL API, Google OAuth + Sheets + Drive |
 | Deploy | Vercel |
@@ -114,7 +115,8 @@ UOM quirk: drip tubing and field wire use `sf` (square feet) even though they're
 - **Reference seed is wipe-and-reseed for `org_id = NULL` rows.** Prisma can't `upsert` against a unique key with a nullable column. The `deleteMany({ where: { orgId: null } })` + `create` pattern is intentional.
 - **Quick-picks come from the Austin Oaks paper form** (REFERENCE_NOTES.md §7). Each is a one-tap shortcut pre-mapped to (issue, component, solution, severity, UOM).
 - **Magic-link emails link to `/auth/confirm?token=…`, not `/api/auth/verify` directly.** That intermediate page exists because Gmail/Slack/iMessage prefetch URLs to render link previews, which burned the one-time token before the user clicked. The token is only consumed on an explicit POST from the Continue button, and the POST handler also rejects known bot UAs as belt-and-suspenders.
-- **In-progress finding drafts are persisted to localStorage** (`src/lib/finding-draft.ts`), keyed `audit-draft:<auditId>:<zoneId>`. Restored on mount; cleared on save/discard; purged wholesale on audit completion. `beforeunload` guards tab close / refresh; in-app navigation is intercepted by an unsaved-changes confirm sheet.
+- **In-progress finding drafts are persisted to IndexedDB** via Dexie (`src/lib/finding-draft.ts` → `src/lib/offline/db.ts` `drafts` store, keyed `<auditId>:<zoneId>`). Restored on mount; cleared on save/discard; purged wholesale on audit completion. `beforeunload` guards tab close / refresh; in-app navigation is intercepted by an unsaved-changes confirm sheet. Note: prior to Phase 1 offline work, drafts lived in localStorage under `audit-draft:*` keys; those are migrated once on app load by `src/lib/offline/migrate.ts`.
+- **Offline support is Phase 1.** Read-side only — see `OFFLINE.md`. The build script passes `--webpack` because `@serwist/next` doesn't yet support Next 16's Turbopack production builds. `public/sw.js` is a generated artifact (gitignored). Write-side queueing is Phase 2.
 - **`pg` SSL deprecation warning** — current pg version warns that `sslmode=require` will change semantics in v3.0.0/v9.0.0. Either pin pg or update the connection string to `sslmode=verify-full` before the bump. Tracking but not urgent.
 
 ## Active branch / worktree notes
@@ -145,13 +147,15 @@ UOM quirk: drip tubing and field wire use `sf` (square feet) even though they're
 - ✅ PDF report generation (`src/lib/report-pdf.tsx`, via `@react-pdf/renderer`) — invoked per property system
 - ✅ Audit photos on Vercel Blob (`@vercel/blob`, `/api/audit-photos`)
 - ✅ Google Sheets export (`src/lib/sheet-export.ts` + route handler) — Summary, All Findings, By Zone, Pricing Summary tabs with formatting
-- ✅ Unit tests (Vitest) — `src/lib/finding-draft.test.ts`, `src/lib/bot-ua.test.ts`, `src/__tests__/nav-links.test.ts`
+- ✅ Unit tests (Vitest) — `src/lib/finding-draft.test.ts`, `src/lib/bot-ua.test.ts`, `src/__tests__/nav-links.test.ts`, plus `src/lib/offline/*.test.ts` for the offline layer
+- ✅ **Offline Phase 1** — service worker via `@serwist/next`, IndexedDB via Dexie, offline indicator in AppHeader, "Download for offline" button on property detail, "Offline ready" badge on property cards, localStorage→IndexedDB draft migration. See `OFFLINE.md`.
 
 ## What's NOT built
 
 - Price sync back from sheets (estimator → auditor read-back of unit costs)
 - Edit existing finding (only add + delete in v1 — tap-to-edit is a TODO)
-- Offline support (no service worker, no IndexedDB queue; the app is online-only today)
+- Offline write-side queue (Phase 2 — mutations offline still fail today; read-only offline works via Phase 1)
+- Photo caching offline (Phase 3)
 - Playwright e2e coverage for the audit flow (ticket filed in `TODO.md` — add it if you touch the audit flow)
 - In-app push notifications for price-back events
 
