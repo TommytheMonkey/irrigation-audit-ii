@@ -1,10 +1,17 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { compressImage } from "@/lib/image-compress";
+import {
+  clearDraft,
+  draftKey,
+  isDraftDirty,
+  loadDraft,
+  saveDraft,
+} from "@/lib/finding-draft";
 import {
   IssueType,
   SolutionAction,
@@ -167,11 +174,66 @@ export function ZoneAudit({
   const router = useRouter();
   const [findings, setFindings] = useState<FindingRow[]>(initialFindings);
   const [draft, setDraft] = useState<FormDraft | null>(null);
+  // Snapshot of the draft at the moment it was created (quick-pick tap or
+  // custom builder finish). We diff the current draft against this to tell
+  // whether the auditor has actually edited anything; a fresh-opened chip
+  // shouldn't nag on its way out. A restored-from-storage draft has no
+  // snapshot and is treated as dirty.
+  const [draftInitial, setDraftInitial] = useState<FormDraft | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [saving, setSaving] = useState(false);
   const [pinPromptFindingId, setPinPromptFindingId] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
+  // "What the user was trying to do when we interrupted them for the
+  // unsaved-changes confirm" — determines where we navigate after a
+  // Save/Discard choice.
+  const [confirmIntent, setConfirmIntent] = useState<
+    "complete-next" | "done" | null
+  >(null);
+
+  const storageKey = useMemo(() => draftKey(auditId, zoneId), [auditId, zoneId]);
+
+  const isDirty = useMemo(
+    () => isDraftDirty(draft, draftInitial),
+    [draft, draftInitial],
+  );
+
+  // ── Restore any in-progress draft on mount ──
+  useEffect(() => {
+    const saved = loadDraft<FormDraft>(storageKey);
+    if (saved) {
+      setDraft(saved);
+      setDraftInitial(null); // restored drafts are always "dirty"
+      toast("Draft restored", {
+        description: "Your in-progress finding was recovered.",
+      });
+    }
+    // We intentionally only run this on mount / when the key changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey]);
+
+  // ── Persist (debounced) on any draft change; clear when draft goes away ──
+  useEffect(() => {
+    if (!draft) {
+      clearDraft(storageKey);
+      return;
+    }
+    const t = setTimeout(() => saveDraft(storageKey, draft), 300);
+    return () => clearTimeout(t);
+  }, [draft, storageKey]);
+
+  // ── Warn on tab close / refresh when a dirty draft is open ──
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Required by some browsers for the prompt to appear.
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
 
   // Severity buckets in display order (low → high). The config sheet locks
   // this to three; if any are missing for some reason, fall back to a sane
@@ -215,7 +277,7 @@ export function ZoneAudit({
   // ── Quick-pick → draft ──
   function selectQuickPick(qp: QuickPickRow) {
     setCustomOpen(false);
-    setDraft({
+    const d: FormDraft = {
       label: qp.label,
       issueType: qp.issueType,
       componentCategory: qp.componentCategory,
@@ -228,12 +290,17 @@ export function ZoneAudit({
       quantity: 1,
       notes: "",
       photoUrls: [],
-    });
+    };
+    setDraft(d);
+    setDraftInitial(d);
   }
 
   // ── Save the draft (POST + optimistic insert) ──
-  async function saveDraft() {
-    if (!draft || saving) return;
+  // Returns true if the save succeeded, false otherwise. Callers that chain
+  // navigation (the "Save & continue" branch of the unsaved-changes sheet)
+  // need to know whether to proceed.
+  async function saveCurrentDraft(): Promise<boolean> {
+    if (!draft || saving) return false;
     setSaving(true);
     const optimistic: FindingRow = {
       id: `tmp-${crypto.randomUUID()}`,
@@ -250,7 +317,10 @@ export function ZoneAudit({
       photoUrls: draft.photoUrls,
     };
     setFindings((f) => [optimistic, ...f]);
+    const postedDraft = draft;
     setDraft(null);
+    setDraftInitial(null);
+    clearDraft(storageKey);
 
     const res = await fetch("/api/findings", {
       method: "POST",
@@ -265,7 +335,7 @@ export function ZoneAudit({
         componentSize: optimistic.componentSize,
         severity: optimistic.severity,
         solutionAction: optimistic.solutionAction,
-        costModel: draft.costModel,
+        costModel: postedDraft.costModel,
         quantity: optimistic.quantity,
         unitOfMeasure: optimistic.unitOfMeasure,
         description: optimistic.description,
@@ -277,7 +347,10 @@ export function ZoneAudit({
       setFindings((f) => f.filter((x) => x.id !== optimistic.id));
       toast.error("Failed to save finding");
       setSaving(false);
-      return;
+      // Restore the draft so the user doesn't lose their work on a network blip.
+      setDraft(postedDraft);
+      setDraftInitial(null);
+      return false;
     }
     const saved = (await res.json()) as { id: string };
     setFindings((f) =>
@@ -290,6 +363,13 @@ export function ZoneAudit({
     } else {
       router.refresh();
     }
+    return true;
+  }
+
+  function discardDraft() {
+    setDraft(null);
+    setDraftInitial(null);
+    clearDraft(storageKey);
   }
 
   // ── Delete a finding (optimistic) ──
@@ -308,7 +388,7 @@ export function ZoneAudit({
   }
 
   // ── Mark zone complete + jump to next ──
-  function completeZone() {
+  function doCompleteZone() {
     startTransition(async () => {
       const res = await fetch(`/api/zones/${zoneId}`, {
         method: "PATCH",
@@ -331,6 +411,53 @@ export function ZoneAudit({
       }
       router.refresh();
     });
+  }
+
+  function goToAuditHub() {
+    router.push(`/audits/${auditId}`);
+  }
+
+  // Entry points for the two navigation buttons in the bottom bar. If there's
+  // a dirty draft, we intercept and let the unsaved-changes sheet decide
+  // whether to save/discard/cancel before proceeding.
+  function handleCompleteAndNext() {
+    if (isDirty) {
+      setConfirmIntent("complete-next");
+      return;
+    }
+    doCompleteZone();
+  }
+
+  function handleDone() {
+    if (isDirty) {
+      setConfirmIntent("done");
+      return;
+    }
+    goToAuditHub();
+  }
+
+  function runIntent(intent: "complete-next" | "done") {
+    if (intent === "complete-next") doCompleteZone();
+    else goToAuditHub();
+  }
+
+  async function onConfirmSave() {
+    const intent = confirmIntent;
+    if (!intent) return;
+    const ok = await saveCurrentDraft();
+    setConfirmIntent(null);
+    if (ok) runIntent(intent);
+  }
+
+  function onConfirmDiscard() {
+    const intent = confirmIntent;
+    discardDraft();
+    setConfirmIntent(null);
+    if (intent) runIntent(intent);
+  }
+
+  function onConfirmCancel() {
+    setConfirmIntent(null);
   }
 
   function confirmPin(x: number, y: number) {
@@ -431,8 +558,8 @@ export function ZoneAudit({
         <DraftPanel
           draft={draft}
           setDraft={setDraft}
-          onSave={saveDraft}
-          onCancel={() => setDraft(null)}
+          onSave={() => void saveCurrentDraft()}
+          onCancel={discardDraft}
           pending={pending || saving}
           severityOrder={severityOrder}
           severityByEnum={severityByEnum}
@@ -483,6 +610,7 @@ export function ZoneAudit({
                 onPick={(d) => {
                   setCustomOpen(false);
                   setDraft(d);
+                  setDraftInitial(d);
                 }}
               />
             )}
@@ -516,7 +644,8 @@ export function ZoneAudit({
           variant="outline"
           size="lg"
           className="h-12 flex-1"
-          render={<Link href={`/audits/${auditId}`} />}
+          onClick={handleDone}
+          disabled={pending}
         >
           Done
         </Button>
@@ -524,12 +653,90 @@ export function ZoneAudit({
           type="button"
           size="lg"
           className="h-12 flex-1"
-          onClick={completeZone}
+          onClick={handleCompleteAndNext}
           disabled={pending}
         >
           Complete &amp; next →
         </Button>
       </div>
+
+      {/* ── Unsaved-changes confirm sheet ── */}
+      {confirmIntent && (
+        <UnsavedChangesSheet
+          pending={saving || pending}
+          onSave={onConfirmSave}
+          onDiscard={onConfirmDiscard}
+          onCancel={onConfirmCancel}
+        />
+      )}
+    </div>
+  );
+}
+
+function UnsavedChangesSheet({
+  pending,
+  onSave,
+  onDiscard,
+  onCancel,
+}: {
+  pending: boolean;
+  onSave: () => void;
+  onDiscard: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="unsaved-changes-title"
+    >
+      <Card className="m-0 w-full max-w-md rounded-b-none sm:m-4 sm:rounded-xl">
+        <CardContent className="flex flex-col gap-4 py-6">
+          <div>
+            <h2
+              id="unsaved-changes-title"
+              className="text-lg font-semibold"
+            >
+              You have unsaved changes
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Save this finding before leaving the zone, or discard it.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Button
+              type="button"
+              size="lg"
+              className="h-12 w-full"
+              onClick={onSave}
+              disabled={pending}
+            >
+              Save finding
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="h-12 w-full"
+              onClick={onDiscard}
+              disabled={pending}
+            >
+              Discard
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="lg"
+              className="h-12 w-full"
+              onClick={onCancel}
+              disabled={pending}
+            >
+              Keep editing
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
