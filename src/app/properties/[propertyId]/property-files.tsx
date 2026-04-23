@@ -3,7 +3,6 @@
 import { useRef, useState, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { upload } from "@vercel/blob/client";
 import type { PropertyFile, FileCategory } from "@prisma/client";
 import {
   Card,
@@ -171,15 +170,36 @@ function UploadZone({ propertyId }: { propertyId: string }) {
     async (fileList: FileList | File[]) => {
       const files = Array.from(fileList);
       if (files.length === 0) return;
+
+      // Vercel serverless functions cap request bodies at ~4.5 MB. Block large
+      // files client-side so the user gets a clear error instead of a silent
+      // 413.
+      const oversize = files.filter((f) => f.size > 4.4 * 1024 * 1024);
+      if (oversize.length > 0) {
+        toast.error(
+          `${oversize.length} file${oversize.length === 1 ? "" : "s"} over the 4.5 MB upload limit — skipped.`,
+        );
+      }
+      const okSize = files.filter((f) => f.size <= 4.4 * 1024 * 1024);
+      if (okSize.length === 0) return;
+
       setUploading(true);
       let okCount = 0;
-      for (const file of files) {
+      for (const file of okSize) {
         try {
-          await upload(file.name, file, {
-            access: "public",
-            handleUploadUrl: `/api/properties/${propertyId}/files/upload`,
-            clientPayload: JSON.stringify({ category }),
-          });
+          const form = new FormData();
+          form.append("file", file);
+          form.append("category", category);
+          const res = await fetch(
+            `/api/properties/${propertyId}/files/upload`,
+            { method: "POST", body: form },
+          );
+          if (!res.ok) {
+            const data = (await res.json().catch(() => ({}))) as {
+              message?: string;
+            };
+            throw new Error(data.message ?? `HTTP ${res.status}`);
+          }
           okCount++;
         } catch (e) {
           console.error("[upload] failed for", file.name, e);
@@ -193,7 +213,7 @@ function UploadZone({ propertyId }: { propertyId: string }) {
         toast.success(
           `Uploaded ${okCount} file${okCount === 1 ? "" : "s"}.`,
         );
-        setTimeout(() => router.refresh(), 800);
+        router.refresh();
       }
     },
     [propertyId, category, router],
@@ -219,7 +239,7 @@ function UploadZone({ propertyId }: { propertyId: string }) {
         <CardTitle className="text-base">Upload files</CardTitle>
         <CardDescription>
           Drag and drop or click to choose. Drawings, cut sheets, manuals, photos
-          — up to 100 MB per file.
+          — up to 4.5 MB per file.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">

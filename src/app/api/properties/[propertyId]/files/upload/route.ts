@@ -2,14 +2,24 @@ import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { db } from "@/lib/db";
 import { requireEditor } from "@/lib/system-profile-auth";
+import type { FileCategory } from "@prisma/client";
 import imageSize from "image-size";
 
 export const runtime = "nodejs";
 
+const VALID_CATEGORIES = new Set<FileCategory>([
+  "DRAWINGS",
+  "CUTSHEET",
+  "MANUAL",
+  "PHOTO",
+  "OTHER",
+]);
+
 // POST /api/properties/[propertyId]/files/upload
-// multipart/form-data: file
-// Uploads a site plan image/PDF, creates a PropertyFile with
-// isFullSitePlan=true, and auto-creates the SitePlanRender.
+// multipart/form-data: file, [category]
+// - If `category` is present: general PropertyFile upload (Files tab).
+// - If `category` is absent: site plan upload — sets isFullSitePlan=true,
+//   clears any existing full site plan, and creates the SitePlanRender.
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ propertyId: string }> },
@@ -34,15 +44,33 @@ export async function POST(
     return NextResponse.json({ error: "no_file" }, { status: 400 });
   }
 
+  const categoryRaw = form?.get("category");
+  const asSitePlan = categoryRaw == null;
   const mime = file.type || "application/octet-stream";
-  if (!mime.startsWith("image/") && mime !== "application/pdf") {
+
+  if (asSitePlan && !mime.startsWith("image/") && mime !== "application/pdf") {
     return NextResponse.json(
       { error: "invalid_type", message: "Site plan must be an image or PDF." },
       { status: 400 },
     );
   }
 
-  const blobKey = `orgs/${auth.user.orgId}/site-plans/${propertyId}-${file.name}`;
+  let category: FileCategory = "OTHER";
+  if (!asSitePlan) {
+    const c = String(categoryRaw);
+    if (!VALID_CATEGORIES.has(c as FileCategory)) {
+      return NextResponse.json(
+        { error: "invalid_category" },
+        { status: 400 },
+      );
+    }
+    category = c as FileCategory;
+  } else {
+    category = "DRAWINGS";
+  }
+
+  const folder = asSitePlan ? "site-plans" : "property-files";
+  const blobKey = `orgs/${auth.user.orgId}/${folder}/${propertyId}-${crypto.randomUUID()}-${file.name}`;
 
   try {
     const blob = await put(blobKey, file, {
@@ -51,11 +79,13 @@ export async function POST(
       addRandomSuffix: false,
     });
 
-    // Clear any existing full site plan on this property
-    await db.propertyFile.updateMany({
-      where: { propertyId, isFullSitePlan: true },
-      data: { isFullSitePlan: false },
-    });
+    if (asSitePlan) {
+      // Clear any existing full site plan on this property
+      await db.propertyFile.updateMany({
+        where: { propertyId, isFullSitePlan: true },
+        data: { isFullSitePlan: false },
+      });
+    }
 
     const pf = await db.propertyFile.create({
       data: {
@@ -64,56 +94,58 @@ export async function POST(
         fileName: file.name,
         mimeType: mime,
         fileSize: file.size,
-        category: "DRAWINGS",
+        category,
         blobUrl: blob.url,
         blobPathname: blob.pathname,
-        isFullSitePlan: true,
+        isFullSitePlan: asSitePlan,
       },
     });
 
-    // Auto-create SitePlanRender
-    if (mime.startsWith("image/")) {
-      const res = await fetch(blob.url);
-      const buf = Buffer.from(await res.arrayBuffer());
-      const dims = imageSize(buf);
-      if (dims.width && dims.height) {
+    if (asSitePlan) {
+      // Auto-create SitePlanRender
+      if (mime.startsWith("image/")) {
+        const res = await fetch(blob.url);
+        const buf = Buffer.from(await res.arrayBuffer());
+        const dims = imageSize(buf);
+        if (dims.width && dims.height) {
+          await db.sitePlanRender.upsert({
+            where: { propertyFileId: pf.id },
+            create: {
+              propertyFileId: pf.id,
+              renderUrl: blob.url,
+              renderPathname: "",
+              width: dims.width,
+              height: dims.height,
+              status: "READY",
+            },
+            update: {
+              renderUrl: blob.url,
+              width: dims.width,
+              height: dims.height,
+              status: "READY",
+            },
+          });
+        }
+      } else {
+        // PDF — render will be provided by the client after rasterizing page 1
         await db.sitePlanRender.upsert({
           where: { propertyFileId: pf.id },
           create: {
             propertyFileId: pf.id,
-            renderUrl: blob.url,
+            renderUrl: "",
             renderPathname: "",
-            width: dims.width,
-            height: dims.height,
-            status: "READY",
+            width: 0,
+            height: 0,
+            status: "PENDING",
           },
           update: {
-            renderUrl: blob.url,
-            width: dims.width,
-            height: dims.height,
-            status: "READY",
+            renderUrl: "",
+            width: 0,
+            height: 0,
+            status: "PENDING",
           },
         });
       }
-    } else {
-      // PDF — render will be provided by the client after rasterizing page 1
-      await db.sitePlanRender.upsert({
-        where: { propertyFileId: pf.id },
-        create: {
-          propertyFileId: pf.id,
-          renderUrl: "",
-          renderPathname: "",
-          width: 0,
-          height: 0,
-          status: "PENDING",
-        },
-        update: {
-          renderUrl: "",
-          width: 0,
-          height: 0,
-          status: "PENDING",
-        },
-      });
     }
 
     return NextResponse.json({
@@ -123,9 +155,9 @@ export async function POST(
       fileName: pf.fileName,
     });
   } catch (e) {
-    console.error("[site-plan/upload] failed:", e);
+    console.error("[properties/files/upload] failed:", e);
     return NextResponse.json(
-      { error: "upload_failed", message: "Site plan upload failed." },
+      { error: "upload_failed", message: "Upload failed." },
       { status: 502 },
     );
   }

@@ -10,12 +10,14 @@ import type {
   PropertyWaterSource,
   PropertyZone,
   PropertyPart,
+  PropertyFile,
   SystemFile,
   ZoneType,
   WiringType,
   SetupStatus,
 } from "@prisma/client";
 import { SystemFiles } from "./system-files";
+import { PropertyFiles } from "./property-files";
 import { SetupFromDrawings } from "./setup-from-drawings";
 import { compressImage } from "@/lib/image-compress";
 import {
@@ -63,6 +65,7 @@ type SitePlanInfo = {
 export function PropertyProfile({
   property,
   systems,
+  propertyFiles,
   audits,
   sitePlan,
   canEdit,
@@ -80,10 +83,12 @@ export function PropertyProfile({
     propertyManagerPhone: string | null;
   };
   systems: SystemFull[];
+  propertyFiles: PropertyFile[];
   audits: AuditRow[];
   sitePlan: SitePlanInfo;
   canEdit: boolean;
 }) {
+  const [topTab, setTopTab] = useState<"systems" | "files">("systems");
   const [activeSystemId, setActiveSystemId] = useState<string | null>(
     systems[0]?.id ?? null,
   );
@@ -129,35 +134,59 @@ export function PropertyProfile({
         canEdit={canEdit}
       />
 
-      {/* Setup from drawings — shown for DRAFT properties */}
-      {property.setupStatus === "DRAFT" && canEdit && !showSetupWizard && (
-        <Card className="border-dashed border-primary/50 bg-primary/5">
-          <CardContent className="flex items-center justify-between gap-4 py-4">
-            <div>
-              <p className="text-sm font-medium">
-                This property hasn't been configured yet.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Upload irrigation schedule drawings to auto-extract POCs, zones,
-                and valve data.
-              </p>
-            </div>
-            <Button onClick={() => setShowSetupWizard(true)}>
-              Set Up From Drawings
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+      {/* Top-level tabs: Systems | Files */}
+      <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800">
+        <SubTabButton
+          active={topTab === "systems"}
+          onClick={() => setTopTab("systems")}
+        >
+          Systems ({systems.length})
+        </SubTabButton>
+        <SubTabButton
+          active={topTab === "files"}
+          onClick={() => setTopTab("files")}
+        >
+          Files ({propertyFiles.length})
+        </SubTabButton>
+      </div>
 
-      {showSetupWizard && (
-        <SetupFromDrawings
+      {topTab === "files" ? (
+        <PropertyFiles
           propertyId={property.id}
-          onClose={() => setShowSetupWizard(false)}
+          files={propertyFiles}
+          canEdit={canEdit}
         />
-      )}
+      ) : (
+        <>
+          {/* Setup from drawings — shown for DRAFT properties */}
+          {property.setupStatus === "DRAFT" && canEdit && !showSetupWizard && (
+            <Card className="border-dashed border-primary/50 bg-primary/5">
+              <CardContent className="flex items-center justify-between gap-4 py-4">
+                <div>
+                  <p className="text-sm font-medium">
+                    This property hasn't been configured yet.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Upload irrigation schedule drawings to auto-extract POCs, zones,
+                    and valve data.
+                  </p>
+                </div>
+                <Button onClick={() => setShowSetupWizard(true)}>
+                  Set Up From Drawings
+                </Button>
+              </CardContent>
+            </Card>
+          )}
 
-      {/* System tabs */}
-      <div className="flex flex-wrap items-center gap-2">
+          {showSetupWizard && (
+            <SetupFromDrawings
+              propertyId={property.id}
+              onClose={() => setShowSetupWizard(false)}
+            />
+          )}
+
+          {/* System tabs */}
+          <div className="flex flex-wrap items-center gap-2">
             {systems.map((s) => (
               <button
                 key={s.id}
@@ -244,6 +273,8 @@ export function PropertyProfile({
               </CardHeader>
             </Card>
           )}
+        </>
+      )}
 
       {/* Audit history (property-level, bottom) */}
       <Card>
