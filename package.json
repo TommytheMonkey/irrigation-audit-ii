@@ -13,6 +13,7 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx --env-file=.env prisma/seed.ts",
     "db:seed:demo": "tsx --env-file=.env prisma/seed-demo.ts",
+    "db:seed:sample-backfill": "tsx --env-file=.env prisma/seed-sample-backfill.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
