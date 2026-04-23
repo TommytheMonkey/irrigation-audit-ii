@@ -10,6 +10,7 @@ import {
   isDraftDirty,
   DRAFT_PREFIX,
 } from "./finding-draft";
+import { offlineDb } from "./offline/db";
 
 // Dummy draft shape — mirrors FormDraft in zone-audit.tsx closely enough
 // that the serializer pass is representative.
@@ -29,7 +30,10 @@ const DRAFT_A: Draft = {
   photoUrls: [],
 };
 
-beforeEach(() => {
+beforeEach(async () => {
+  // Clear Dexie AND localStorage — older tests seeded localStorage and
+  // we want a clean slate per case.
+  await offlineDb.drafts.clear();
   window.localStorage.clear();
 });
 
@@ -45,67 +49,60 @@ describe("draftKey / auditDraftPrefix", () => {
 });
 
 describe("saveDraft / loadDraft round-trip", () => {
-  it("returns null when nothing saved", () => {
-    expect(loadDraft(draftKey("aud1", "zn1"))).toBeNull();
+  it("returns null when nothing saved", async () => {
+    expect(await loadDraft(draftKey("aud1", "zn1"))).toBeNull();
   });
 
-  it("persists and reloads an object verbatim", () => {
+  it("persists and reloads an object verbatim", async () => {
     const key = draftKey("aud1", "zn1");
-    saveDraft<Draft>(key, DRAFT_A);
-    expect(loadDraft<Draft>(key)).toEqual(DRAFT_A);
+    await saveDraft<Draft>(key, DRAFT_A);
+    expect(await loadDraft<Draft>(key)).toEqual(DRAFT_A);
   });
 
-  it("overwrites on second save", () => {
+  it("overwrites on second save", async () => {
     const key = draftKey("aud1", "zn1");
-    saveDraft(key, DRAFT_A);
-    saveDraft(key, { ...DRAFT_A, notes: "edited" });
-    expect(loadDraft<Draft>(key)?.notes).toBe("edited");
-  });
-
-  it("returns null when stored JSON is corrupt", () => {
-    const key = draftKey("aud1", "zn1");
-    window.localStorage.setItem(key, "{not json");
-    expect(loadDraft<Draft>(key)).toBeNull();
+    await saveDraft(key, DRAFT_A);
+    await saveDraft(key, { ...DRAFT_A, notes: "edited" });
+    expect((await loadDraft<Draft>(key))?.notes).toBe("edited");
   });
 });
 
 describe("clearDraft", () => {
-  it("removes a saved draft", () => {
+  it("removes a saved draft", async () => {
     const key = draftKey("aud1", "zn1");
-    saveDraft(key, DRAFT_A);
-    clearDraft(key);
-    expect(loadDraft<Draft>(key)).toBeNull();
+    await saveDraft(key, DRAFT_A);
+    await clearDraft(key);
+    expect(await loadDraft<Draft>(key)).toBeNull();
   });
 });
 
 describe("cross-zone / cross-audit isolation", () => {
-  it("drafts for different zones don't overlap", () => {
+  it("drafts for different zones don't overlap", async () => {
     const a = draftKey("aud1", "zn1");
     const b = draftKey("aud1", "zn2");
-    saveDraft<Draft>(a, { ...DRAFT_A, notes: "zone-1" });
-    saveDraft<Draft>(b, { ...DRAFT_A, notes: "zone-2" });
-    expect(loadDraft<Draft>(a)?.notes).toBe("zone-1");
-    expect(loadDraft<Draft>(b)?.notes).toBe("zone-2");
+    await saveDraft<Draft>(a, { ...DRAFT_A, notes: "zone-1" });
+    await saveDraft<Draft>(b, { ...DRAFT_A, notes: "zone-2" });
+    expect((await loadDraft<Draft>(a))?.notes).toBe("zone-1");
+    expect((await loadDraft<Draft>(b))?.notes).toBe("zone-2");
   });
 
-  it("drafts for different audits don't overlap", () => {
+  it("drafts for different audits don't overlap", async () => {
     const a = draftKey("aud1", "zn1");
     const b = draftKey("aud2", "zn1");
-    saveDraft<Draft>(a, { ...DRAFT_A, notes: "audit-1" });
-    saveDraft<Draft>(b, { ...DRAFT_A, notes: "audit-2" });
-    expect(loadDraft<Draft>(a)?.notes).toBe("audit-1");
-    expect(loadDraft<Draft>(b)?.notes).toBe("audit-2");
+    await saveDraft<Draft>(a, { ...DRAFT_A, notes: "audit-1" });
+    await saveDraft<Draft>(b, { ...DRAFT_A, notes: "audit-2" });
+    expect((await loadDraft<Draft>(a))?.notes).toBe("audit-1");
+    expect((await loadDraft<Draft>(b))?.notes).toBe("audit-2");
   });
 });
 
 describe("listAuditDraftKeys", () => {
-  it("returns only keys for the target audit", () => {
-    saveDraft<Draft>(draftKey("aud1", "zn1"), DRAFT_A);
-    saveDraft<Draft>(draftKey("aud1", "zn2"), DRAFT_A);
-    saveDraft<Draft>(draftKey("aud2", "zn1"), DRAFT_A);
-    window.localStorage.setItem("unrelated", "whatever");
+  it("returns only keys for the target audit", async () => {
+    await saveDraft<Draft>(draftKey("aud1", "zn1"), DRAFT_A);
+    await saveDraft<Draft>(draftKey("aud1", "zn2"), DRAFT_A);
+    await saveDraft<Draft>(draftKey("aud2", "zn1"), DRAFT_A);
 
-    const keys = listAuditDraftKeys("aud1").sort();
+    const keys = (await listAuditDraftKeys("aud1")).sort();
     expect(keys).toEqual(
       [draftKey("aud1", "zn1"), draftKey("aud1", "zn2")].sort(),
     );
@@ -113,18 +110,16 @@ describe("listAuditDraftKeys", () => {
 });
 
 describe("clearAllDraftsForAudit", () => {
-  it("removes every draft under the audit and leaves others", () => {
-    saveDraft<Draft>(draftKey("aud1", "zn1"), DRAFT_A);
-    saveDraft<Draft>(draftKey("aud1", "zn2"), DRAFT_A);
-    saveDraft<Draft>(draftKey("aud2", "zn1"), DRAFT_A);
-    window.localStorage.setItem("unrelated", "whatever");
+  it("removes every draft under the audit and leaves others", async () => {
+    await saveDraft<Draft>(draftKey("aud1", "zn1"), DRAFT_A);
+    await saveDraft<Draft>(draftKey("aud1", "zn2"), DRAFT_A);
+    await saveDraft<Draft>(draftKey("aud2", "zn1"), DRAFT_A);
 
-    clearAllDraftsForAudit("aud1");
+    await clearAllDraftsForAudit("aud1");
 
-    expect(loadDraft<Draft>(draftKey("aud1", "zn1"))).toBeNull();
-    expect(loadDraft<Draft>(draftKey("aud1", "zn2"))).toBeNull();
-    expect(loadDraft<Draft>(draftKey("aud2", "zn1"))).toEqual(DRAFT_A);
-    expect(window.localStorage.getItem("unrelated")).toBe("whatever");
+    expect(await loadDraft<Draft>(draftKey("aud1", "zn1"))).toBeNull();
+    expect(await loadDraft<Draft>(draftKey("aud1", "zn2"))).toBeNull();
+    expect(await loadDraft<Draft>(draftKey("aud2", "zn1"))).toEqual(DRAFT_A);
   });
 });
 

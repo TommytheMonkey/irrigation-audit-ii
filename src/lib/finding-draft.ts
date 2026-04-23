@@ -5,8 +5,14 @@
 // crash), we want that work restored on the next mount. Keyed by
 // audit+zone so multiple tabs/zones don't collide.
 //
-// This module is pure and framework-agnostic so it can be unit-tested in
-// isolation — no React, no DOM beyond the `localStorage` global.
+// Backed by IndexedDB (Dexie) as of Phase 1 offline work. Previously
+// lived in localStorage; the migration from legacy keys is handled
+// once per client in src/lib/offline/migrate.ts. The external key
+// shape (`audit-draft:<auditId>:<zoneId>`) is preserved so callers
+// don't need to change; we strip the `audit-draft:` prefix when
+// talking to Dexie.
+
+import { offlineDb } from "./offline/db";
 
 export const DRAFT_PREFIX = "audit-draft:";
 
@@ -18,84 +24,84 @@ export function auditDraftPrefix(auditId: string): string {
   return `${DRAFT_PREFIX}${auditId}:`;
 }
 
-function getStorage(): Storage | null {
-  if (typeof window === "undefined") return null;
+function toDexieKey(storageKey: string): string {
+  return storageKey.startsWith(DRAFT_PREFIX)
+    ? storageKey.slice(DRAFT_PREFIX.length)
+    : storageKey;
+}
+
+function toStorageKey(dexieKey: string): string {
+  return `${DRAFT_PREFIX}${dexieKey}`;
+}
+
+function isBrowser(): boolean {
+  return typeof window !== "undefined";
+}
+
+export async function saveDraft<T>(key: string, value: T): Promise<void> {
+  if (!isBrowser()) return;
   try {
-    return window.localStorage;
+    await offlineDb.drafts.put({
+      key: toDexieKey(key),
+      value: value as unknown,
+      updatedAt: new Date(),
+    });
+  } catch {
+    // Storage failure must not block field work. The form stays
+    // functional; we just can't restore on reload.
+  }
+}
+
+export async function loadDraft<T>(key: string): Promise<T | null> {
+  if (!isBrowser()) return null;
+  try {
+    const row = await offlineDb.drafts.get(toDexieKey(key));
+    return (row?.value as T) ?? null;
   } catch {
     return null;
   }
 }
 
-export function saveDraft<T>(key: string, value: T): void {
-  const storage = getStorage();
-  if (!storage) return;
+export async function clearDraft(key: string): Promise<void> {
+  if (!isBrowser()) return;
   try {
-    storage.setItem(
-      key,
-      JSON.stringify({ value, updatedAt: new Date().toISOString() }),
-    );
-  } catch {
-    // Quota exceeded or disabled — field must keep working regardless.
-  }
-}
-
-export function loadDraft<T>(key: string): T | null {
-  const storage = getStorage();
-  if (!storage) return null;
-  try {
-    const raw = storage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { value: T } | null;
-    return parsed?.value ?? null;
-  } catch {
-    return null;
-  }
-}
-
-export function clearDraft(key: string): void {
-  const storage = getStorage();
-  if (!storage) return;
-  try {
-    storage.removeItem(key);
+    await offlineDb.drafts.delete(toDexieKey(key));
   } catch {
     // ignore
   }
 }
 
-// Enumerate every draft key belonging to a given audit. Used when the
-// auditor taps Complete Audit so we can warn about (or purge) any zone
-// drafts still sitting in local storage.
-export function listAuditDraftKeys(auditId: string): string[] {
-  const storage = getStorage();
-  if (!storage) return [];
-  const prefix = auditDraftPrefix(auditId);
-  const out: string[] = [];
-  for (let i = 0; i < storage.length; i++) {
-    const k = storage.key(i);
-    if (k && k.startsWith(prefix)) out.push(k);
+// Enumerate every draft key belonging to a given audit. Used by
+// Complete Audit to surface a warning and to purge on success.
+export async function listAuditDraftKeys(auditId: string): Promise<string[]> {
+  if (!isBrowser()) return [];
+  try {
+    const rows = await offlineDb.drafts
+      .where("key")
+      .startsWith(`${auditId}:`)
+      .toArray();
+    return rows.map((r) => toStorageKey(r.key));
+  } catch {
+    return [];
   }
-  return out;
 }
 
-export function clearAllDraftsForAudit(auditId: string): void {
-  const storage = getStorage();
-  if (!storage) return;
-  // Snapshot first — removing while iterating shifts indices in some impls.
-  for (const k of listAuditDraftKeys(auditId)) {
-    try {
-      storage.removeItem(k);
-    } catch {
-      // ignore
-    }
+export async function clearAllDraftsForAudit(auditId: string): Promise<void> {
+  if (!isBrowser()) return;
+  try {
+    await offlineDb.drafts
+      .where("key")
+      .startsWith(`${auditId}:`)
+      .delete();
+  } catch {
+    // ignore
   }
 }
 
 // Deep equality via JSON. Our drafts are plain JSON objects (enums are
-// strings at runtime, no Dates, no Maps) so this is sound. We use it to
-// decide whether to prompt the auditor before discarding — the initial
-// snapshot is taken at the moment the draft is created; any deviation
-// means the user actually touched the form.
+// strings at runtime, no Dates, no Maps) so this is sound. Used to
+// decide whether to prompt before discarding. Stays synchronous — the
+// caller already has `current` and `initial` in memory.
 export function isDraftDirty<T>(current: T | null, initial: T | null): boolean {
   if (!current) return false;
   if (!initial) return true; // restored-from-storage — treat as dirty

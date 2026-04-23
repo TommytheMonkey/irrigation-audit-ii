@@ -201,25 +201,27 @@ export function ZoneAudit({
 
   // ── Restore any in-progress draft on mount ──
   useEffect(() => {
-    const saved = loadDraft<FormDraft>(storageKey);
-    if (saved) {
+    let cancelled = false;
+    loadDraft<FormDraft>(storageKey).then((saved) => {
+      if (cancelled || !saved) return;
       setDraft(saved);
       setDraftInitial(null); // restored drafts are always "dirty"
       toast("Draft restored", {
         description: "Your in-progress finding was recovered.",
       });
-    }
-    // We intentionally only run this on mount / when the key changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [storageKey]);
 
   // ── Persist (debounced) on any draft change; clear when draft goes away ──
   useEffect(() => {
     if (!draft) {
-      clearDraft(storageKey);
+      void clearDraft(storageKey);
       return;
     }
-    const t = setTimeout(() => saveDraft(storageKey, draft), 300);
+    const t = setTimeout(() => void saveDraft(storageKey, draft), 300);
     return () => clearTimeout(t);
   }, [draft, storageKey]);
 
@@ -320,7 +322,7 @@ export function ZoneAudit({
     const postedDraft = draft;
     setDraft(null);
     setDraftInitial(null);
-    clearDraft(storageKey);
+    void clearDraft(storageKey);
 
     const res = await fetch("/api/findings", {
       method: "POST",
@@ -369,7 +371,7 @@ export function ZoneAudit({
   function discardDraft() {
     setDraft(null);
     setDraftInitial(null);
-    clearDraft(storageKey);
+    void clearDraft(storageKey);
   }
 
   // ── Delete a finding (optimistic) ──

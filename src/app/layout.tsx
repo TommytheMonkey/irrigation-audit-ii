@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Montserrat, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
+import { OfflineInit } from "@/components/offline-init";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { brandCss } from "@/lib/brand-theme";
@@ -71,6 +72,7 @@ export default async function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-background">
         {css && <style dangerouslySetInnerHTML={{ __html: css }} />}
+        <OfflineInit />
         {children}
         <Toaster position="top-center" richColors />
       </body>

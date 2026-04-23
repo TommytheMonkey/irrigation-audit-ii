@@ -29,9 +29,19 @@ export function CompleteAuditButton({
   // state at the moment of the tap. Zero-cost when the dialog is closed.
   const [draftCount, setDraftCount] = useState(0);
 
-  function openConfirm() {
-    setDraftCount(listAuditDraftKeys(auditId).length);
+  async function openConfirm() {
+    // Open the dialog immediately so the tap feels responsive; fill the
+    // draft-count warning in once Dexie resolves. Field audits have
+    // maybe a handful of zones; this query is cheap.
+    setDraftCount(0);
     setConfirmOpen(true);
+    try {
+      const keys = await listAuditDraftKeys(auditId);
+      setDraftCount(keys.length);
+    } catch {
+      // Count stays at 0 — the auditor can still complete; worst
+      // case we fail to warn about a draft (which we'll also purge).
+    }
   }
 
   function closeConfirm() {
@@ -53,7 +63,7 @@ export function CompleteAuditButton({
         });
         return;
       }
-      clearAllDraftsForAudit(auditId);
+      await clearAllDraftsForAudit(auditId);
       setConfirmOpen(false);
       toast.success("Audit completed");
       router.push(`/audits/${auditId}/summary`);
