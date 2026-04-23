@@ -141,8 +141,10 @@ export async function createMagicLinkUrl(email: string): Promise<string> {
     },
   });
 
+  // See /auth/confirm/page.tsx — link previewers would otherwise burn the
+  // token on prefetch, leaving users with "link expired" when they click.
   const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
-  return `${baseUrl}/api/auth/verify?token=${encodeURIComponent(token)}`;
+  return `${baseUrl}/auth/confirm?token=${encodeURIComponent(token)}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

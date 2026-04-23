@@ -29,8 +29,11 @@ export async function POST(req: Request) {
     },
   });
 
+  // Link points at the confirmation page, not the token-consuming endpoint —
+  // that way Gmail/Slack/iMessage link previewers don't burn the one-time
+  // token before the real user clicks. See /auth/confirm/page.tsx.
   const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
-  const link = `${baseUrl}/api/auth/verify?token=${encodeURIComponent(token)}`;
+  const link = `${baseUrl}/auth/confirm?token=${encodeURIComponent(token)}`;
 
   await sendEmail({
     to: email,

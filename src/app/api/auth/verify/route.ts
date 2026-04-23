@@ -5,22 +5,39 @@ import {
   signSession,
   setSessionCookie,
 } from "@/lib/auth";
+import { isBotUserAgent } from "@/lib/bot-ua";
 
-// GET /api/auth/verify?token=...
+// POST /api/auth/verify
 //
-// Verifies the magic-link JWT, marks the row in magic_tokens used (single-
-// use enforcement), then resolves the user via domain matching:
+// Body: { token: string } (JSON) or application/x-www-form-urlencoded
+//   (HTML form submit from /auth/confirm). Both are accepted so JS-off
+//   clients still work.
 //
-//   • Existing user → sign session, redirect /
+// This endpoint is the token-consuming step of the magic-link flow. The
+// email no longer links here directly — users land on /auth/confirm
+// first (a GET-safe page), and only the explicit POST from that page
+// consumes the token.
+//
+// Behaviour:
+//   • Existing user → sign session, 303 redirect /
 //   • New user, org with matching emailDomain exists → join as auditor
-//   • New user, no matching org → create org (placeholder name = domain) +
-//     user as admin → redirect /onboarding
+//   • New user, no matching org → create org + admin user → /onboarding
 //
-// On any failure we redirect back to /login?error=… so the page can render
-// a friendly message instead of a JSON 400.
-export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const token = url.searchParams.get("token");
+// Bot UA belt-and-suspenders: if something non-human does end up POSTing
+// (misconfigured preview proxy, corporate link scanner re-posting forms,
+// etc.) we return 200 without consuming so the real user can still click
+// Continue. Normal failures still redirect to /login?error=…
+export async function POST(req: Request) {
+  if (isBotUserAgent(req.headers.get("user-agent"))) {
+    // Return 200 with no side effects — the preview fetch is satisfied
+    // and the token stays unused for the real click.
+    return new NextResponse("bot_ignored", {
+      status: 200,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
+
+  const token = await extractToken(req);
   if (!token) return redirectToLogin("missing_token");
 
   const payload = await verifyMagicToken(token);
@@ -103,12 +120,57 @@ export async function GET(req: Request) {
   // requireAuth on the dashboard enforce that consistently.
   const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
   const dest = isNewOrg || !user.org.onboardingComplete ? "/onboarding" : "/";
-  return NextResponse.redirect(`${baseUrl}${dest}`);
+  // 303 so the browser uses GET on the redirect target (the POST is done).
+  return NextResponse.redirect(`${baseUrl}${dest}`, { status: 303 });
+}
+
+// GET /api/auth/verify
+//
+// Kept for backwards-compatibility with magic-link emails already in the
+// wild before this change — just bounces to the confirmation page. The
+// new email bodies link straight to /auth/confirm so this path is only
+// exercised by in-flight links.
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const token = url.searchParams.get("token");
+  const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
+  const target = token
+    ? `${baseUrl}/auth/confirm?token=${encodeURIComponent(token)}`
+    : `${baseUrl}/login?error=missing_token`;
+  return NextResponse.redirect(target, {
+    status: 302,
+    headers: { "Cache-Control": "no-store" },
+  });
+}
+
+async function extractToken(req: Request): Promise<string | null> {
+  const ct = req.headers.get("content-type")?.toLowerCase() ?? "";
+  try {
+    if (ct.includes("application/json")) {
+      const body = (await req.json().catch(() => ({}))) as { token?: string };
+      return body.token?.trim() ?? null;
+    }
+    if (
+      ct.includes("application/x-www-form-urlencoded") ||
+      ct.includes("multipart/form-data")
+    ) {
+      const fd = await req.formData();
+      const t = fd.get("token");
+      return typeof t === "string" && t.trim().length > 0 ? t.trim() : null;
+    }
+  } catch {
+    return null;
+  }
+  // Last-resort: tolerate ?token= on the POST URL.
+  const url = new URL(req.url);
+  return url.searchParams.get("token");
 }
 
 function redirectToLogin(error: string): NextResponse {
   const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
-  return NextResponse.redirect(`${baseUrl}/login?error=${error}`);
+  return NextResponse.redirect(`${baseUrl}/login?error=${error}`, {
+    status: 303,
+  });
 }
 
 function titlecaseDomain(domain: string): string {
