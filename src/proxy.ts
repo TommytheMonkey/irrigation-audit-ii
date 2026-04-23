@@ -18,8 +18,13 @@ const SESSION_COOKIE = "session";
 // Public paths that bypass auth entirely. Anything not matched here gets
 // gated. The matcher at the bottom already excludes _next + favicon, so we
 // only need to list app-level public routes.
-const PUBLIC_PATHS = new Set<string>(["/login"]);
-const PUBLIC_PREFIXES = ["/api/auth/"];
+//
+// /auth/confirm is the intermediate magic-link page — users are literally
+// unauthenticated when they click the link, so gating it on a session
+// cookie would bounce them straight to /login and the token never gets
+// consumed. Keep this path public alongside /login and /api/auth/*.
+const PUBLIC_PATHS = new Set<string>(["/login", "/auth/confirm"]);
+const PUBLIC_PREFIXES = ["/api/auth/", "/auth/"];
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
